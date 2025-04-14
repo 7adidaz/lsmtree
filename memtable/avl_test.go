@@ -8,10 +8,20 @@ import (
 func TestComplexTree(t *testing.T) {
 	avlTree := new(AVLTree)
 
+	// Initial size should be 0
+	if avlTree.Size() != 0 {
+		t.Errorf("Expected initial size to be 0, got %d", avlTree.Size())
+	}
+
 	// Insert a series of keys to force multiple rotations
-	keys := []uint{50, 30, 70, 20, 40, 60, 80, 15, 25, 35, 45, 55, 65, 75, 85}
+	keys := []uint32{50, 30, 70, 20, 40, 60, 80, 15, 25, 35, 45, 55, 65, 75, 85}
 	for _, key := range keys {
 		avlTree.Put(NewIntKey(key), []byte{byte(key)})
+	}
+
+	// Check size after initial insertions
+	if avlTree.Size() != uint32(len(keys)) {
+		t.Errorf("Expected size %d after insertions, got %d", len(keys), avlTree.Size())
 	}
 
 	// Verify tree structure is valid
@@ -30,7 +40,7 @@ func TestComplexTree(t *testing.T) {
 	}
 
 	// Test some non-existent keys
-	nonExistentKeys := []uint{10, 90, 42, 58}
+	nonExistentKeys := []uint32{10, 90, 42, 58}
 	for _, key := range nonExistentKeys {
 		if avlTree.Get(NewIntKey(key)) != nil {
 			t.Errorf("Key %d should not be in the tree", key)
@@ -38,7 +48,7 @@ func TestComplexTree(t *testing.T) {
 	}
 
 	// Delete some keys and verify tree remains balanced
-	deleteKeys := []uint{30, 70, 20, 65}
+	deleteKeys := []uint32{30, 70, 20, 65}
 	for _, key := range deleteKeys {
 		avlTree.Delete(NewIntKey(key))
 		if avlTree.Get(NewIntKey(key)) != nil {
@@ -46,14 +56,27 @@ func TestComplexTree(t *testing.T) {
 		}
 	}
 
+	// Size should be unchanged after logical deletion (our implementation uses tombstones)
+	if avlTree.Size() != uint32(len(keys)) {
+		t.Errorf("Expected size %d after deletions (using tombstones), got %d", 
+			len(keys), avlTree.Size())
+	}
+
 	// Insert some new keys
-	newKeys := []uint{42, 58, 90, 5}
+	newKeys := []uint32{42, 58, 90, 5}
 	for _, key := range newKeys {
 		avlTree.Put(NewIntKey(key), []byte{byte(key)})
 	}
 
+	// Check size after new insertions
+	expectedSize := uint32(len(keys) + len(newKeys))
+	if avlTree.Size() != expectedSize {
+		t.Errorf("Expected size %d after new insertions, got %d", 
+			expectedSize, avlTree.Size())
+	}
+
 	// Update some existing keys
-	updateKeys := []uint{50, 40, 80}
+	updateKeys := []uint32{50, 40, 80}
 	for _, key := range updateKeys {
 		avlTree.Put(NewIntKey(key), []byte{byte(key + 100)})
 		value := avlTree.Get(NewIntKey(key))
@@ -62,7 +85,13 @@ func TestComplexTree(t *testing.T) {
 		}
 	}
 
-	avlTree.Dump(true)
+	// Size should not change when updating existing keys
+	if avlTree.Size() != expectedSize {
+		t.Errorf("Expected size to remain %d after updates, got %d", 
+			expectedSize, avlTree.Size())
+	}
+
+	// avlTree.Dump(true)
 
 	remainingKeys := len(keys) - len(deleteKeys) + len(newKeys)
 	maxExpectedHeight := int(1.44*math.Log2(float64(remainingKeys+2)) - 0.328)

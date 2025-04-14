@@ -3,6 +3,8 @@ package memtable
 /*
  * This is a sorted in-memory data structure, When it gets
  * bigger than some threshold, it write it out to disk.
+ *
+ *  TODO: concurrency ... crowd goes: BOOOOO
  */
 
 import (
@@ -18,6 +20,10 @@ type Node struct {
 	height int
 }
 
+func (n *Node) getKV() *Entry {
+	return &Entry{n.key, n.data}
+}
+
 func NewNode(key interfaces.Comparable, data []byte) *Node {
 	return &Node{
 		key:    key,
@@ -28,6 +34,15 @@ func NewNode(key interfaces.Comparable, data []byte) *Node {
 
 type AVLTree struct {
 	head *Node
+	size uint32
+}
+
+func NewAVLTree() *AVLTree {
+	return &AVLTree{size: 0}
+}
+
+func (t *AVLTree) Size() uint32 {
+	return t.size
 }
 
 func (t *AVLTree) Get(key interfaces.Comparable) []byte {
@@ -49,19 +64,24 @@ func (t *AVLTree) Get(key interfaces.Comparable) []byte {
 }
 
 func (t *AVLTree) Put(key interfaces.Comparable, val []byte) {
-	t.head = insert(t.head, key, val)
+	// updated := new(bool)
+	updated := false
+	t.head = insert(t.head, key, val, &updated)
+	if !updated {
+		t.size++
+	}
 }
 
 func (t *AVLTree) Delete(key interfaces.Comparable) {
-	t.head = insert(t.head, key, []byte{0x7f})
+	t.head = insert(t.head, key, []byte{0x7f}, nil)
 }
 
-func (t *AVLTree) Dump(printDump bool) []*Node {
+func (t *AVLTree) Dump(log bool) []*Node {
 	var arr []*Node
 	inOrderTraversal(t.head, &arr)
 
 	println(len(arr))
-	if printDump {
+	if log {
 		for i, node := range arr {
 			println(
 				"Node", i, ": K=", node.key.GetValue(),
@@ -75,14 +95,25 @@ func (t *AVLTree) Dump(printDump bool) []*Node {
 	return arr
 }
 
-func inOrderTraversal(node *Node, result *[]*Node) {
-    if node == nil {
-        return
-    }
+func (t *AVLTree) ToKVs() []*Entry {
+	var arr []*Node
+	inOrderTraversal(t.head, &arr)
+	result := make([]*Entry, len(arr))
+	for i, node := range arr {
+		result[i] = node.getKV()
+	}
 
-    inOrderTraversal(node.left, result)
+	return result
+}
+
+func inOrderTraversal(node *Node, result *[]*Node) {
+	if node == nil {
+		return
+	}
+
+	inOrderTraversal(node.left, result)
 	*result = append(*result, node)
-    inOrderTraversal(node.right, result)
+	inOrderTraversal(node.right, result)
 }
 
 /*
@@ -123,15 +154,18 @@ func rightRotation(node *Node) *Node {
 	return b
 }
 
-func insert(node *Node, key interfaces.Comparable, data []byte) *Node {
+func insert(node *Node, key interfaces.Comparable, data []byte, updated *bool) *Node {
 	if node == nil {
 		return NewNode(key, data)
 	} else if node.key.Compare(key) == -1 {
-		node.right = insert(node.right, key, data)
+		node.right = insert(node.right, key, data, updated)
 	} else if node.key.Compare(key) == 1 {
-		node.left = insert(node.left, key, data)
+		node.left = insert(node.left, key, data, updated)
 	} else {
 		node.data = data
+		if updated != nil {
+			*updated = true
+		}
 		return node
 	}
 
