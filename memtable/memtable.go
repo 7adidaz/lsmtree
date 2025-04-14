@@ -3,24 +3,29 @@ package memtable
 import "lsmtree/interfaces"
 
 type MemTable struct {
+	tree MemTableImplementation
+}
+
+func NewMemTable(tree *MemTable) *MemTable {
+	return &MemTable{tree: tree}
 }
 
 type MemTableImplementation interface {
-	Get(key interfaces.Comparable) interfaces.Comparable
+	Get(key interfaces.Comparable) []byte
 	Put(key interfaces.Comparable, val []byte)
 	Delete(key interfaces.Comparable)
 }
 
-func (t MemTable) Get(key []byte) ([]byte, error) {
-	return nil, nil
+func (t *MemTable) Get(key interfaces.Comparable) []byte {
+	return t.tree.Get(key)
 }
 
-func (t MemTable) Put(key []byte, val []byte) ([]byte, error) {
-	return nil, nil
+func (t *MemTable) Put(key interfaces.Comparable, val []byte){
+	t.tree.Put(key, val)
 }
 
-func (t MemTable) Delete(key []byte) ([]byte, error) {
-	return nil, nil
+func (t *MemTable) Delete(key interfaces.Comparable) {
+	t.tree.Delete(key)
 }
 
 func (t MemTable) Flush() error {
