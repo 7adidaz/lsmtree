@@ -1,8 +1,9 @@
 package memtable
 
 import (
+	"bytes"
+	"encoding/binary"
 	"lsmtree/interfaces"
-	"lsmtree/util"
 )
 
 type IntKey struct {
@@ -36,15 +37,12 @@ func (i *IntKey) ToBytes() ([]byte, error) {
 	 * this functions outputs 5 bytes, first bye is for key type
 	 * and other 4 for the key.
 	 */
-
-	bytes, err := util.ToByteArray(uint8(0x00))
-	if err != nil {
-		return nil, err
-	}
-
-	tempBytes, err := util.ToByteArray(i.value)
-	if err != nil {
-		return nil, err
-	}
-	return append(bytes, tempBytes...), nil
+    buf := new(bytes.Buffer)
+    if err := binary.Write(buf, binary.BigEndian, uint8(0x00)); err != nil {
+        return nil, err
+    }
+    if err := binary.Write(buf, binary.BigEndian, i.value); err != nil {
+        return nil, err
+    }
+    return buf.Bytes(), nil
 }

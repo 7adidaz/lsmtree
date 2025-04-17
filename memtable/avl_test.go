@@ -101,4 +101,14 @@ func TestComplexTree(t *testing.T) {
 		t.Errorf("Tree height %d exceeds expected maximum %d for %d elements",
 			actualHeight, maxExpectedHeight, remainingKeys)
 	}
+
+	avlTree.Clear()
+
+	if avlTree.Size() != 0 {
+		t.Errorf("Tree should have size 0 after clearning it")
+	}
+
+	if len(avlTree.ToKVs()) != 0 {
+		t.Errorf("Tree should have 0 elements after clearning it")
+	}
 }

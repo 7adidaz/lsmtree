@@ -45,6 +45,11 @@ func (t *AVLTree) Size() uint32 {
 	return t.size
 }
 
+func (t *AVLTree) Clear() {
+	t.head = nil
+	t.size = 0
+}
+
 func (t *AVLTree) Get(key interfaces.Comparable) []byte {
 	var curr *Node = t.head
 	for curr != nil {

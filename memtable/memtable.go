@@ -1,9 +1,11 @@
 package memtable
 
 import (
-	"encoding/hex"
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
 	"lsmtree/interfaces"
-	"lsmtree/util"
 )
 
 type MemTable struct {
@@ -23,6 +25,7 @@ type MemTableImplementation interface {
 	Get(key interfaces.Comparable) []byte
 	Put(key interfaces.Comparable, val []byte)
 	Delete(key interfaces.Comparable)
+	Clear()
 	Size() uint32
 	ToKVs() []*Entry
 }
@@ -46,42 +49,55 @@ func (t *MemTable) Size() uint32 {
 	return t.tree.Size()
 }
 
-/*
- * TODO: continue from here
- *
- * make sure the serialized data have the correct length 
- * main bug issues (uint32  length is 2)
- * 
-	keylength 2
-	datalength 1
-	entrydata 1
-	keylength 2
-	datalength 1
-	entrydata 6
- *
- */
+func (t *MemTable) Flush(file io.Writer) error {
+	/*
+		     * Binary Format:
+		     * [4 bytes] - Table size (uint32)
+		     * For each entry:
+		     *   [1 byte]  - Key type (0x00 for IntKey)
+		     *   [4 bytes] - Key value (uint32)
+		     *   [4 bytes] - Value length (int32)
+		     *   [N bytes] - Value data
+			 *
+			 *  the caller should close the file.
+	*/
 
-func (t *MemTable) Flush() error {
-	var seralizedData []byte
-	seralizedData = append(seralizedData, byte(t.Size()))
-	for _, entry := range t.tree.ToKVs() {
-		key, ok := entry.key.ToBytes()
-		if ok != nil {
-			panic("Error on serializing Key")
-		}
-		println("keylength", len(key))
-		seralizedData = append(seralizedData, key...)
-		dataLength, ok := util.ToByteArray(int32(len(entry.value)))
-		if ok != nil {
-			panic("Error on serializing DataLength")
-		}
-		seralizedData = append(seralizedData, dataLength...)
-		println("datalength", len(dataLength))
-		seralizedData = append(seralizedData, entry.value...)
-		println("entrydata", len(entry.value))
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.BigEndian, t.Size()); err != nil {
+		return fmt.Errorf("error serializing table size: %w", err)
 	}
 
-	println("seralized: ", hex.EncodeToString(seralizedData))
+	for _, entry := range t.tree.ToKVs() {
+		// if bytes.Equal(entry.value, []byte{0x7f}) {
+		//     continue
+		// }
+
+		// Write key
+		keyBytes, err := entry.key.ToBytes()
+		if err != nil {
+			return fmt.Errorf("error serializing key: %w", err)
+		}
+		if _, err := buf.Write(keyBytes); err != nil {
+			return fmt.Errorf("error writing key: %w", err)
+		}
+
+		// Write value length
+		valueLen := int32(len(entry.value))
+		if err := binary.Write(buf, binary.BigEndian, valueLen); err != nil {
+			return fmt.Errorf("error serializing value length: %w", err)
+		}
+
+		// Write value data
+		if _, err := buf.Write(entry.value); err != nil {
+			return fmt.Errorf("error writing value: %w", err)
+		}
+	}
+
+	if _, err := file.Write(buf.Bytes()); err != nil {
+		return fmt.Errorf("error writing buffer to file")
+	}
+	t.tree.Clear()
 
 	return nil
 }

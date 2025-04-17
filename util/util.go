@@ -7,7 +7,7 @@ import (
 
 func ToByteArray(data any) ([]byte, error) {
 	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.LittleEndian, uint8(0x00))
+	err := binary.Write(buf, binary.BigEndian, data)
 	if err != nil {
 		return nil, err
 	}

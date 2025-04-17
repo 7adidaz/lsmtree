@@ -2,6 +2,7 @@ package memtable
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 )
 
@@ -67,5 +68,13 @@ func TestMemTable(t *testing.T) {
 	}
 
 	// avl.Dump(true)
-	memtable.Flush()
+    buf := new(bytes.Buffer)
+	memtable.Flush(buf)
+
+	//  2 values|key->type-value|value len|TOMBSTONE|key->type-value|value len| data
+	//  00000002|(00)00000001   |00000001 |7f       |(00)00000002   |00000006 |76616c756532
+	bufExpectedVal := "000000020000000001000000017f00000000020000000676616c756532"
+	if hex.EncodeToString(buf.Bytes()) != bufExpectedVal {
+		t.Errorf("Output of the flush doesn't match expected value")
+	}
 }
