@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"lsmtree/interfaces"
+	"lsmtree/util"
 )
 
 type MemTable struct {
@@ -49,7 +50,7 @@ func (t *MemTable) Size() uint32 {
 	return t.tree.Size()
 }
 
-func (t *MemTable) Flush(file io.Writer) error {
+func (t *MemTable) Dump(file io.Writer) error {
 	/*
 		     * Binary Format:
 		     * [4 bytes] - Table size (uint32)
@@ -98,6 +99,34 @@ func (t *MemTable) Flush(file io.Writer) error {
 		return fmt.Errorf("error writing buffer to file")
 	}
 	t.tree.Clear()
+
+	return nil
+}
+
+func (t *MemTable) Load(buf io.Reader) error {
+	tableLength, err := util.ParseInt32(buf)
+	if err != nil {
+		return fmt.Errorf("error parsing table size: %w", err)
+	}
+
+	for i := uint32(0); i < tableLength; i++ {
+		key, err := parseKey(buf)
+		if err != nil {
+			return err
+		}
+
+		valueLength, err := util.ParseInt32(buf)
+		if err != nil {
+			return fmt.Errorf("error parsing value length: %w", err)
+		}
+
+		valueBytes := make([]byte, valueLength)
+		if n, err := buf.Read(valueBytes); err != nil || n != int(valueLength) {
+			return fmt.Errorf("error parsing value data: %w", err)
+		}
+
+		t.Put(key, valueBytes)
+	}
 
 	return nil
 }

@@ -67,14 +67,70 @@ func TestMemTable(t *testing.T) {
 		t.Errorf("Expected size 2, got %d", avl.size)
 	}
 
+}
+
+func TestMemTableDump(t *testing.T) {
+	// Create AVL tree
+	avl := NewAVLTree()
+
+	// Create memtable with AVL tree
+	memtable := NewMemTable(avl)
+
+	key1 := NewIntKey(1)
+	val1 := []byte("value1")
+	memtable.Put(key1, val1)
+
+	key2 := NewIntKey(2)
+	val2 := []byte("value2")
+	memtable.Put(key2, val2)
+
+	memtable.Delete(key1)
+
 	// avl.Dump(true)
-    buf := new(bytes.Buffer)
-	memtable.Flush(buf)
+	buf := new(bytes.Buffer)
+	memtable.Dump(buf)
 
 	//  2 values|key->type-value|value len|TOMBSTONE|key->type-value|value len| data
 	//  00000002|(00)00000001   |00000001 |7f       |(00)00000002   |00000006 |76616c756532
 	bufExpectedVal := "000000020000000001000000017f00000000020000000676616c756532"
 	if hex.EncodeToString(buf.Bytes()) != bufExpectedVal {
 		t.Errorf("Output of the flush doesn't match expected value")
+	}
+}
+
+func TestMemTableLoad(t *testing.T) {
+	// Create AVL tree
+	avl := NewAVLTree()
+
+	// Create memtable with AVL tree
+	memtable := NewMemTable(avl)
+
+	readBuf := new(bytes.Buffer)
+	dumpBytes, err := hex.DecodeString("000000020000000001000000017f00000000020000000676616c756532")
+	if err != nil {
+		t.Error("Unable to decode string")
+	}
+	readBuf.Write(dumpBytes)
+
+	memtable.Load(readBuf)
+
+	if memtable.Size() != 2 {
+		t.Error("Unable to load dumped data")
+	}
+
+	result := memtable.Get(NewIntKey(1))
+	if result != nil {
+		t.Errorf("Expected nil for deleted key, got %s", result)
+	}
+
+	result = memtable.Get(NewIntKey(1))
+	if result != nil {
+		t.Errorf("Expected nil for deleted key, got %s", result)
+	}
+
+	result = memtable.Get(NewIntKey(2))
+	val2 := []byte("value2")
+	if !bytes.Equal(result, val2) {
+		t.Errorf("Expected %s, got %s", val2, result)
 	}
 }
