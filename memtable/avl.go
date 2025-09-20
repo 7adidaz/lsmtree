@@ -50,22 +50,22 @@ func (t *AVLTree) Clear() {
 	t.size = 0
 }
 
-func (t *AVLTree) Get(key interfaces.Comparable) []byte {
+func (t *AVLTree) Get(key interfaces.Comparable) (bool, []byte) {
 	var curr *Node = t.head
 	for curr != nil {
 		compareResult := curr.key.Compare(key)
 		if compareResult == 0 {
 			if curr.data != nil && bytes.Equal(curr.data, []byte{0x7f}) {
-				return nil
+				return true, nil
 			}
-			return curr.data
+			return true, curr.data
 		} else if compareResult == -1 {
 			curr = curr.right
 		} else {
 			curr = curr.left
 		}
 	}
-	return nil
+	return false, nil
 }
 
 func (t *AVLTree) Put(key interfaces.Comparable, val []byte) {
@@ -79,6 +79,60 @@ func (t *AVLTree) Put(key interfaces.Comparable, val []byte) {
 
 func (t *AVLTree) Delete(key interfaces.Comparable) {
 	t.head = insert(t.head, key, []byte{0x7f}, nil)
+}
+
+func (t *AVLTree) Floor(key interfaces.Comparable) []byte {
+    curr := t.head
+    var candidate *Node
+
+    for curr != nil {
+        compareResult := curr.key.Compare(key)
+        if compareResult == 0 {
+            if curr.data != nil && bytes.Equal(curr.data, []byte{0x7f}) {
+                return nil
+            }
+            return curr.data
+        } else if compareResult == 1 {
+            curr = curr.left
+        } else {
+            if curr.data != nil && !bytes.Equal(curr.data, []byte{0x7f}) {
+                candidate = curr
+            }
+            curr = curr.right
+        }
+    }
+
+    if candidate != nil {
+        return candidate.data
+    }
+    return nil
+}
+
+func (t *AVLTree) Ceil(key interfaces.Comparable) []byte {
+    curr := t.head
+    var candidate *Node
+
+    for curr != nil {
+        compareResult := curr.key.Compare(key)
+        if compareResult == 0 {
+            if curr.data != nil && bytes.Equal(curr.data, []byte{0x7f}) {
+                return nil
+            }
+            return curr.data
+        } else if compareResult == 1 {
+            if curr.data != nil && !bytes.Equal(curr.data, []byte{0x7f}) {
+                candidate = curr
+            }
+            curr = curr.left
+        } else {
+            curr = curr.right
+        }
+    }
+
+    if candidate != nil {
+        return candidate.data
+    }
+    return nil
 }
 
 func (t *AVLTree) Dump(log bool) []*Node {

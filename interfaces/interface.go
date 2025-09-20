@@ -9,4 +9,5 @@ type Comparable interface {
 	// first byte is numbering for different supported keys which i will document later
 	// for now i will only support uint32 which will be 0x00 in hex.
 	ToBytes() ([]byte, error)
+	Hash(numHashes uint32)([]uint32, error)
 }
