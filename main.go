@@ -11,10 +11,19 @@ import (
 )
 
 func main() {
-	// Create a Gin router with default middleware (logger and recovery)
+    var threshold uint32 = 50
+    var sparsityFactor uint32 = 2
+    var falsePositiveRate float64 = 0.1
+
+    println("Initializing LSM Tree with:")
+    println("Threshold:", threshold)
+    println("Memtable size:", sparsityFactor)
+    println("False positive rate:", falsePositiveRate)
+
+
 	r := gin.Default()
 
-	lsm := lsmtree.NewLSMTree(2, 10, 0.01)
+    lsm := lsmtree.NewLSMTree(threshold, sparsityFactor, falsePositiveRate)
 
 	// Define a simple GET endpoint
 	r.GET("/ping", func(c *gin.Context) {
