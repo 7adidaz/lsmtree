@@ -6,7 +6,6 @@ import (
 	"main/keys"
 	"main/lsmtree"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,18 +27,15 @@ func main() {
 	r.GET("/:key", func(c *gin.Context) {
 		key := c.Params.ByName("key")
 
-		var parsed_key interfaces.Comparable = keys.NewStringKey(key)
-		num, err := strconv.Atoi(key)
-		if err != nil {
-			parsed_key = keys.NewIntKey(uint32(num))
-		}
-
+		parsed_key := parseKey(key)
 		found, value, err := lsm.Get(parsed_key)
 		if !found {
 			c.String(http.StatusNotFound, "key is not found")
+			return
 		}
 		if err != nil {
 			c.String(http.StatusTeapot, "Failed to get the key")
+			return
 		}
 		c.String(http.StatusOK, string(value))
 	})
@@ -51,17 +47,15 @@ func main() {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			c.String(http.StatusTeapot, "Failed to read request body")
+			return
 		}
 
-		var parsed_key interfaces.Comparable = keys.NewStringKey(key)
-		num, err := strconv.Atoi(key)
-		if err != nil {
-			parsed_key = keys.NewIntKey(uint32(num))
-		}
+		parsed_key := parseKey(key)
 
 		err = lsm.Put(parsed_key, body)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "something went wrong putting the key")
+			return
 		}
 
 		c.String(http.StatusOK, "Key: "+key+" is set\n")
@@ -70,12 +64,7 @@ func main() {
 	r.DELETE("/:key", func(c *gin.Context) {
 		key := c.Params.ByName("key")
 
-		var parsed_key interfaces.Comparable = keys.NewStringKey(key)
-		num, err := strconv.Atoi(key)
-		if err != nil {
-			parsed_key = keys.NewIntKey(uint32(num))
-		}
-
+		parsed_key := parseKey(key)
 		lsm.Delete(parsed_key)
 
 		c.String(http.StatusOK, "Key: "+key+" is deleted\n")
@@ -84,4 +73,15 @@ func main() {
 	// Start server on port 8080 (default)
 	// Server will listen on 0.0.0.0:8080 (localhost:8080 on Windows)
 	r.Run()
+}
+
+
+func parseKey(key string) interfaces.Comparable {
+	var parsed_key interfaces.Comparable = keys.NewStringKey(key)
+	// num, err := strconv.Atoi(key)
+	// if err != nil {
+	// 	parsed_key = keys.NewIntKey(uint32(num))
+	// }
+
+	return parsed_key
 }

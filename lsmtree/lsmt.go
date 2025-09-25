@@ -38,7 +38,7 @@ var TOMBSTONE = []byte{0x7f}
 func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float64) *LSM {
 
 	cwd, _ := os.Getwd()
-	dataPath := filepath.Join(filepath.Dir(cwd), "data")
+	dataPath := filepath.Join(cwd, "data")
 	loadSSTables(dataPath)
 
 	return &LSM{
@@ -68,7 +68,7 @@ func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
 	found, val := l.memtable.Get(key)
 	if found {
 		if bytes.Equal(val, TOMBSTONE) {
-			return true, nil, nil
+			return false, nil, nil
 		}
 		return true, val, nil
 	}
@@ -82,7 +82,7 @@ func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
 			return true, data, nil
 		}
 	}
-	return true, nil, nil
+	return false, nil, nil
 }
 
 func (l *LSM) writeSSTableData(buf bytes.Buffer) (string, error) {
