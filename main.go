@@ -17,7 +17,7 @@ func main() {
 
     println("Initializing LSM Tree with:")
     println("Threshold:", threshold)
-    println("Memtable size:", sparsityFactor)
+    println("Sparsity factor:", sparsityFactor)
     println("False positive rate:", falsePositiveRate)
 
 
