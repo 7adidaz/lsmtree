@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"lsmtree/interfaces"
+	"main/interfaces"
 )
 
 type IntKey struct {

@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"lsmtree/bloomfilter"
-	"lsmtree/interfaces"
-	"lsmtree/keys"
-	"lsmtree/util"
+	"main/bloomfilter"
+	"main/interfaces"
+	"main/keys"
+	"main/util"
 )
 
 type MemTable struct {
@@ -54,8 +54,10 @@ func (t *MemTable) Size() uint32 {
 	return t.tree.Size()
 }
 
-
-func (t *MemTable) Dump(file io.Writer, bloomfilter bloomfilter.BloomFilterImplementation, index MemTableImplementation, sampling int32) error  {
+func (t *MemTable) Dump(file io.Writer,
+	bloomfilter bloomfilter.BloomFilterImplementation,
+	index MemTableImplementation,
+	sampling int32) error {
 	/*
 		     * Binary Format:
 		     * [4 bytes] - Table size (uint32)
@@ -73,7 +75,7 @@ func (t *MemTable) Dump(file io.Writer, bloomfilter bloomfilter.BloomFilterImple
 	if err := binary.Write(buf, binary.BigEndian, t.Size()); err != nil {
 		return fmt.Errorf("error serializing table size: %w", err)
 	}
-	
+
 	i := int32(0)
 	for _, entry := range t.tree.ToKVs() {
 		// if bytes.Equal(entry.value, []byte{0x7f}) {
@@ -81,7 +83,7 @@ func (t *MemTable) Dump(file io.Writer, bloomfilter bloomfilter.BloomFilterImple
 		// }
 
 		if bloomfilter != nil {
-			bloomfilter.Insert(entry.Key) 
+			bloomfilter.Insert(entry.Key)
 		}
 
 		// sparse index
@@ -121,20 +123,39 @@ func (t *MemTable) Dump(file io.Writer, bloomfilter bloomfilter.BloomFilterImple
 	return nil
 }
 
+type offsetReader struct {
+    r      io.Reader
+    offset int
+}
 
-func (t *MemTable) Load(buf io.Reader) error {
-	tableLength, err := util.ParseInt32(buf)
+func (o *offsetReader) Read(p []byte) (int, error) {
+    n, err := o.r.Read(p)
+    o.offset += n
+    return n, err
+}
+
+func (t *MemTable) Load(buf io.Reader,
+	bloomfilter bloomfilter.BloomFilterImplementation,
+	index MemTableImplementation,
+	sampling int32) error {
+
+    rd := &offsetReader{r: buf}
+
+	tableLength, err := util.ParseInt32(rd.r)
 	if err != nil {
 		return fmt.Errorf("error parsing table size: %w", err)
 	}
 
+	j := int32(0)
+	startOfCurrKey := 0
 	for i := uint32(0); i < tableLength; i++ {
-		key, err := keys.ParseKey(buf)
+		startOfCurrKey = rd.offset
+		key, err := keys.ParseKey(rd.r)
 		if err != nil {
 			return err
 		}
 
-		valueLength, err := util.ParseInt32(buf)
+		valueLength, err := util.ParseInt32(rd.r)
 		if err != nil {
 			return fmt.Errorf("error parsing value length: %w", err)
 		}
@@ -143,6 +164,17 @@ func (t *MemTable) Load(buf io.Reader) error {
 		if n, err := buf.Read(valueBytes); err != nil || n != int(valueLength) {
 			return fmt.Errorf("error parsing value data: %w", err)
 		}
+
+		if bloomfilter != nil {
+			bloomfilter.Insert(key)
+		}
+		// sparse index
+		if index != nil && sampling > 0 && j%sampling == 0 {
+			offsetBytes := make([]byte, 4)
+			binary.BigEndian.PutUint32(offsetBytes, uint32(startOfCurrKey))
+			index.Put(key, offsetBytes)
+		}
+		j++
 
 		t.Put(key, valueBytes)
 	}

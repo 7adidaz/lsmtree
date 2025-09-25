@@ -1,7 +1,7 @@
 package bloomfilter
 
 import (
-	"lsmtree/interfaces"
+	"main/interfaces"
 	"math"
 )
 

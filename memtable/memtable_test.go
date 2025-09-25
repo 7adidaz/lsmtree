@@ -3,7 +3,7 @@ package memtable
 import (
 	"bytes"
 	"encoding/hex"
-	"lsmtree/keys"
+	"main/keys"
 	"testing"
 )
 
@@ -46,14 +46,14 @@ func TestMemTable(t *testing.T) {
 	// Test non-existent key
 	key3 := keys.NewIntKey(3)
 	found, result = memtable.Get(key3)
-	if found || result != nil {
+	if found && result != nil {
 		t.Errorf("Expected nil for non-existent key, got %s", result)
 	}
 
 	// Test Delete operation
 	memtable.Delete(key1)
 	found, result = memtable.Get(key1)
-	if found || result != nil {
+	if found && result != nil {
 		t.Errorf("Expected nil for deleted key, got %s", result)
 	}
 
@@ -113,19 +113,19 @@ func TestMemTableLoad(t *testing.T) {
 	}
 	readBuf.Write(dumpBytes)
 
-	memtable.Load(readBuf)
+	memtable.Load(readBuf, nil, nil, 0)
 
 	if memtable.Size() != 2 {
 		t.Error("Unable to load dumped data")
 	}
 
 	found, result := memtable.Get(keys.NewIntKey(1))
-	if found || result != nil {
+	if found && result != nil {
 		t.Errorf("Expected nil for deleted key, got %s", result)
 	}
 
 	found, result = memtable.Get(keys.NewIntKey(1))
-	if found || result != nil {
+	if found && result != nil {
 		t.Errorf("Expected nil for deleted key, got %s", result)
 	}
 

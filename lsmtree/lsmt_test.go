@@ -2,7 +2,7 @@ package lsmtree
 
 import (
 	"fmt"
-	"lsmtree/keys"
+	"main/keys"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestLSMTree(t *testing.T) {
-	lsm := newLSMTree(10, 2, 0.01)
+	lsm := NewLSMTree(10, 2, 0.01)
 	key := keys.NewStringKey("foo")
 	value := []byte("bar")
 	err := lsm.Put(key, value)
@@ -33,7 +33,7 @@ func TestLSMTree(t *testing.T) {
 
 func TestMaintainTheLatestVersionOfKey(t *testing.T) {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	lsm := newLSMTree(10, 10, 0.01)
+	lsm := NewLSMTree(10, 10, 0.01)
 	n := 50
 	latest_val := ""
 	for i := range n {
@@ -54,7 +54,7 @@ func TestMaintainTheLatestVersionOfKey(t *testing.T) {
 }
 
 func TestMaintainLatestVersionWithCompaction(t *testing.T) {
-	lsm := newLSMTree(10, 2, 0.01)
+	lsm := NewLSMTree(10, 2, 0.01)
 	testKey := keys.NewStringKey("test-key")
 	latestValue := ""
 	for i := range 100 {
@@ -81,7 +81,7 @@ func TestMaintainLatestVersionWithCompaction(t *testing.T) {
 }
 
 func TestLSMTreeBulkRandom(t *testing.T) {
-	lsm := newLSMTree(50, 3, 0.01)
+	lsm := NewLSMTree(50, 3, 0.01)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := 20000
 	keyToValue := make(map[int]string)
@@ -111,7 +111,7 @@ func TestLSMTreeBulkRandom(t *testing.T) {
 }
 
 func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
-	lsm := newLSMTree(5, 3, 0.01)
+	lsm := NewLSMTree(5, 3, 0.01)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := 20
 	keyToValue := make(map[int]string)
@@ -154,7 +154,7 @@ func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
 }
 
 func BenchmarkLSMTreePutGet(b *testing.B) {
-	lsm := newLSMTree(1000, 10, 0.01)
+	lsm := NewLSMTree(1000, 10, 0.01)
 	n := 100000
 	for i := 0; i < n; i++ {
 		key := keys.NewIntKey(uint32(i))

@@ -9,7 +9,7 @@ package memtable
 
 import (
 	"bytes"
-	"lsmtree/interfaces"
+	"main/interfaces"
 )
 
 type Node struct {

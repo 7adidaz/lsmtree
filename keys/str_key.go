@@ -6,7 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"io"
-	"lsmtree/interfaces"
+	"main/interfaces"
 )
 
 type StringKey struct {

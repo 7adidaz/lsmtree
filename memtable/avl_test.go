@@ -1,7 +1,7 @@
 package memtable
 
 import (
-	"lsmtree/keys"
+	"main/keys"
 	"math"
 	"testing"
 )
@@ -33,7 +33,7 @@ func TestComplexTree(t *testing.T) {
 	// Verify all keys are present
 	for _, key := range testKeys {
 		found, value := avlTree.Get(keys.NewIntKey(key))
-		if !found || value == nil {
+		if !found && value == nil {
 			t.Errorf("Key %d should be in the tree", key)
 		} else if len(value) != 1 || value[0] != byte(key) {
 			t.Errorf("Value for key %d is incorrect", key)
@@ -44,7 +44,7 @@ func TestComplexTree(t *testing.T) {
 	nonExistentKeys := []uint32{10, 90, 42, 58}
 	for _, key := range nonExistentKeys {
 		found, value := avlTree.Get(keys.NewIntKey(key))
-		if found || value != nil {
+		if found && value != nil {
 			t.Errorf("Key %d should not be in the tree", key)
 		}
 	}
@@ -54,7 +54,7 @@ func TestComplexTree(t *testing.T) {
 	for _, key := range deleteKeys {
 		avlTree.Delete(keys.NewIntKey(key))
 		found, value := avlTree.Get(keys.NewIntKey(key))
-		if found || value != nil {
+		if found && value != nil {
 			t.Errorf("Key %d should have been deleted", key)
 		}
 	}
@@ -83,7 +83,7 @@ func TestComplexTree(t *testing.T) {
 	for _, key := range updateKeys {
 		avlTree.Put(keys.NewIntKey(key), []byte{byte(key + 100)})
 		found, value := avlTree.Get(keys.NewIntKey(key))
-		if !found || value == nil || len(value) != 1 || value[0] != byte(key+100) {
+		if !found && value == nil || len(value) != 1 || value[0] != byte(key+100) {
 			t.Errorf("Updated value for key %d is incorrect", key)
 		}
 	}

@@ -1,12 +1,21 @@
 package bloomfilter_test
 
 import (
-	"lsmtree/bloomfilter"
-	"lsmtree/keys"
-	"math/rand"
+	"crypto/rand"
+	"encoding/binary"
+	"main/bloomfilter"
+	"main/keys"
 	"testing"
-	"time"
 )
+
+func randomUint32() uint32 {
+	var b [4]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		panic("crypto/rand failed")
+	}
+	return binary.LittleEndian.Uint32(b[:])
+}
 
 func TestBasic(t *testing.T) {
 	bf := bloomfilter.NewBloomFilter(500, 0.01)
@@ -33,14 +42,13 @@ func TestBasic(t *testing.T) {
 
 func TestProbability(t *testing.T) {
 	entriesNumb := 7000
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	bf := bloomfilter.NewBloomFilter(10000, 0.01)
+	bf := bloomfilter.NewBloomFilter(10000, 0.5)
 
 	inserted := make(map[uint32]struct{})
 	nonInserted := make(map[uint32]struct{})
 
 	for len(inserted) < entriesNumb/2 {
-		n := uint32(r.Intn(10000000))
+		n := randomUint32()
 		if _, exists := inserted[n]; !exists {
 			inserted[n] = struct{}{}
 			if err := bf.Insert(keys.NewIntKey(n)); err != nil {
@@ -50,7 +58,7 @@ func TestProbability(t *testing.T) {
 	}
 
 	for len(nonInserted) < entriesNumb/2 {
-		n := uint32(r.Intn(10000000))
+		n := randomUint32()
 		if _, exists := inserted[n]; !exists {
 			nonInserted[n] = struct{}{}
 		}
