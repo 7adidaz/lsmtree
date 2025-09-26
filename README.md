@@ -2,6 +2,16 @@
 
 Simple Log-Structured Merge Tree (LSM Tree) key-value store written in Go. Also it exposes a REST API for basic CRUD operations and uses an in-memory memtable, bloom filter, and persistent SSTables.
 
+
+## Try the Deployed Demo
+
+You can try the deployed code here:
+
+```sh
+curl https://lsmtree.alhadad.me/your-key
+curl -X PUT https://lsmtree.alhadad.me/your-key -d "very-secure-data"
+```
+
 ## API Usage
 
 - `GET /ping` — Health check
