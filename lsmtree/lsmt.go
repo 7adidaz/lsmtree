@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"fmt"
@@ -38,27 +39,79 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 
 	cwd, _ := os.Getwd()
 	dataPath := filepath.Join(cwd, "data")
-	loadSSTables(dataPath)
 
-	return &LSM{
+	lsm := &LSM{
 		threshold:         threshold,
 		sparsityFactor:    sparsityFactor,
 		falsePositiveRate: falsePositiveRate,
 		memtable:          *memtable.NewMemTable(memtable.NewAVLTree()),
 		dataPath:          dataPath,
 	}
+
+	err := lsm.loadSSTables(dataPath)
+	if err != nil {
+		panic(err)
+	}
+
+	return lsm
 }
 
-func loadSSTables(dataPath string) error {
+func (l *LSM) loadSSTables(dataPath string) error {
 	entries, err := os.ReadDir(dataPath)
 	if err != nil {
 		return err
 	}
 
-	for _, e := range entries {
-		// construct sparsity and bloom filter
-		fmt.Println(e.Name())
+	type fileEntry struct {
+		name    string
+		modTime time.Time
 	}
+
+	var files []fileEntry
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, fileEntry{name: e.Name(), modTime: info.ModTime()})
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime.Before(files[j].modTime)
+	})
+
+	for _, e := range files {
+		filePath := filepath.Join(dataPath, e.name)
+		f, err := os.Open(filePath)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		sparseIndex := memtable.NewAVLTree()
+		bloomFilter := bloomfilter.NewBloomFilter(l.threshold, l.falsePositiveRate)
+		memtable := memtable.NewMemTable(memtable.NewAVLTree())
+
+		buf := new(bytes.Buffer)
+		_, err = buf.ReadFrom(f)
+		if err != nil {
+			return err
+		}
+		err = memtable.Load(buf, bloomFilter, sparseIndex, 5)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Loaded SSTable from %s\n", filePath)
+		l.SStables = append(l.SStables, &SSTable{
+			dataLocation: f.Name(),
+			dataLength:   buf.Len(),
+			sparseIndex:  sparseIndex,
+			bloomfilter:  bloomFilter,
+		})
+	}
+
+	fmt.Printf("Loaded %d SStables", len(files))
 
 	return nil
 }
