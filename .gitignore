@@ -1,2 +1,12 @@
 .qodo
-data/*
+data/
+lsm-tree
+
+# Terraform / OpenTofu
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# private key from `tofu output -raw private_key`
+*.pem
+
