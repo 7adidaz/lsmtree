@@ -57,6 +57,10 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 }
 
 func (l *LSM) loadSSTables(dataPath string) error {
+	if err := os.MkdirAll(dataPath, 0o755); err != nil {
+		return err
+	}
+
 	entries, err := os.ReadDir(dataPath)
 	if err != nil {
 		return err
@@ -86,32 +90,35 @@ func (l *LSM) loadSSTables(dataPath string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
 
 		sparseIndex := memtable.NewAVLTree()
 		bloomFilter := bloomfilter.NewBloomFilter(l.threshold, l.falsePositiveRate)
-		memtable := memtable.NewMemTable(memtable.NewAVLTree())
+		loaded := memtable.NewMemTable(memtable.NewAVLTree())
 
 		buf := new(bytes.Buffer)
 		_, err = buf.ReadFrom(f)
+		f.Close()
 		if err != nil {
 			return err
 		}
-		err = memtable.Load(buf, bloomFilter, sparseIndex, 5)
+
+		dataLength := buf.Len()
+
+		err = loaded.Load(buf, bloomFilter, sparseIndex, l.sparsityFactor)
 		if err != nil {
 			return err
 		}
 
 		fmt.Printf("Loaded SSTable from %s\n", filePath)
 		l.SStables = append(l.SStables, &SSTable{
-			dataLocation: f.Name(),
-			dataLength:   buf.Len(),
+			dataLocation: filePath,
+			dataLength:   dataLength,
 			sparseIndex:  sparseIndex,
 			bloomfilter:  bloomFilter,
 		})
 	}
 
-	fmt.Printf("Loaded %d SStables", len(files))
+	fmt.Printf("Loaded %d SStables\n", len(files))
 
 	return nil
 }

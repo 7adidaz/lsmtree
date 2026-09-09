@@ -124,44 +124,44 @@ func (t *MemTable) Dump(file io.Writer,
 }
 
 type offsetReader struct {
-    r      io.Reader
-    offset int
+	r      io.Reader
+	offset int
 }
 
 func (o *offsetReader) Read(p []byte) (int, error) {
-    n, err := o.r.Read(p)
-    o.offset += n
-    return n, err
+	n, err := o.r.Read(p)
+	o.offset += n
+	return n, err
 }
 
 func (t *MemTable) Load(buf io.Reader,
 	bloomfilter bloomfilter.BloomFilterImplementation,
 	index MemTableImplementation,
-	sampling int32) error {
+	sampling uint32) error {
 
-    rd := &offsetReader{r: buf}
+	rd := &offsetReader{r: buf}
 
-	tableLength, err := util.ParseInt32(rd.r)
+	tableLength, err := util.ParseInt32(rd)
 	if err != nil {
 		return fmt.Errorf("error parsing table size: %w", err)
 	}
 
-	j := int32(0)
+	j := uint32(0)
 	startOfCurrKey := 0
-	for i := uint32(0); i < tableLength; i++ {
+	for range tableLength {
 		startOfCurrKey = rd.offset
-		key, err := keys.ParseKey(rd.r)
+		key, err := keys.ParseKey(rd)
 		if err != nil {
 			return err
 		}
 
-		valueLength, err := util.ParseInt32(rd.r)
+		valueLength, err := util.ParseInt32(rd)
 		if err != nil {
 			return fmt.Errorf("error parsing value length: %w", err)
 		}
 
 		valueBytes := make([]byte, valueLength)
-		if n, err := buf.Read(valueBytes); err != nil || n != int(valueLength) {
+		if _, err := io.ReadFull(rd, valueBytes); err != nil {
 			return fmt.Errorf("error parsing value data: %w", err)
 		}
 

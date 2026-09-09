@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"main/keys"
 	"math/rand"
+	"os"
 	"strconv"
 	"testing"
 	"time"
 )
 
 func TestLSMTree(t *testing.T) {
+	chdirTemp(t)
+
 	lsm := NewLSMTree(10, 2, 0.01)
 	key := keys.NewStringKey("foo")
 	value := []byte("bar")
@@ -32,6 +35,8 @@ func TestLSMTree(t *testing.T) {
 }
 
 func TestMaintainTheLatestVersionOfKey(t *testing.T) {
+	chdirTemp(t)
+
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	lsm := NewLSMTree(10, 10, 0.01)
 	n := 50
@@ -54,6 +59,8 @@ func TestMaintainTheLatestVersionOfKey(t *testing.T) {
 }
 
 func TestMaintainLatestVersionWithCompaction(t *testing.T) {
+	chdirTemp(t)
+
 	lsm := NewLSMTree(10, 2, 0.01)
 	testKey := keys.NewStringKey("test-key")
 	latestValue := ""
@@ -81,6 +88,8 @@ func TestMaintainLatestVersionWithCompaction(t *testing.T) {
 }
 
 func TestLSMTreeBulkRandom(t *testing.T) {
+	chdirTemp(t)
+
 	lsm := NewLSMTree(50, 3, 0.01)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := 20000
@@ -111,13 +120,20 @@ func TestLSMTreeBulkRandom(t *testing.T) {
 }
 
 func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
+	chdirTemp(t)
+
 	lsm := NewLSMTree(5, 3, 0.01)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := 20
 	keyToValue := make(map[int]string)
 	keysArr := make([]int, n)
+	seen := make(map[int]bool, n)
 	for i := range n {
 		s := r.Intn(1000)
+		for seen[s] {
+			s = r.Intn(1000)
+		}
+		seen[s] = true
 		keysArr[i] = s
 		val := "val_" + strconv.Itoa(i)
 		keyToValue[s] = val
@@ -154,6 +170,8 @@ func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
 }
 
 func BenchmarkLSMTreePutGet(b *testing.B) {
+	chdirTemp(b)
+
 	lsm := NewLSMTree(1000, 10, 0.01)
 	n := 100000
 	for i := 0; i < n; i++ {
@@ -175,4 +193,67 @@ func BenchmarkLSMTreePutGet(b *testing.B) {
 			b.Errorf("Expected value 'val_%d', got '%s'", idx, string(got))
 		}
 	}
+}
+
+func TestSSTablesSurviveRestart(t *testing.T) {
+	chdirTemp(t)
+
+	const threshold = 10
+	const n = 40
+
+	first := NewLSMTree(threshold, 2, 0.01)
+	for i := range n {
+		k := keys.NewStringKey(fmt.Sprintf("key-%02d", i))
+		if err := first.Put(k, fmt.Appendf(nil, "value-%02d", i)); err != nil {
+			t.Fatalf("Put failed for key-%02d: %v", i, err)
+		}
+	}
+	if len(first.SStables) == 0 {
+		t.Fatal("expected at least one SSTable to be flushed")
+	}
+
+	persisted := len(first.SStables) * threshold
+
+	reopened := NewLSMTree(threshold, 2, 0.01)
+	if got, want := len(reopened.SStables), len(first.SStables); got != want {
+		t.Fatalf("reloaded %d SSTables, want %d", got, want)
+	}
+	for i, table := range reopened.SStables {
+		if table.dataLength == 0 {
+			t.Errorf("SSTable %d reloaded with dataLength 0", i)
+		}
+	}
+
+	for i := range persisted {
+		k := keys.NewStringKey(fmt.Sprintf("key-%02d", i))
+		found, got, err := reopened.Get(k)
+		if err != nil {
+			t.Errorf("Get failed for key-%02d: %v", i, err)
+			continue
+		}
+		if !found {
+			t.Errorf("key-%02d is missing after restart", i)
+			continue
+		}
+		if want := fmt.Sprintf("value-%02d", i); string(got) != want {
+			t.Errorf("key-%02d has value %q, want %q", i, got, want)
+		}
+	}
+}
+
+func chdirTemp(tb testing.TB) {
+	tb.Helper()
+
+	orig, err := os.Getwd()
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if err := os.Chdir(tb.TempDir()); err != nil {
+		tb.Fatal(err)
+	}
+	tb.Cleanup(func() {
+		if err := os.Chdir(orig); err != nil {
+			tb.Fatal(err)
+		}
+	})
 }
