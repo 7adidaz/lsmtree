@@ -164,30 +164,33 @@ func (l *LSM) writeSSTableData(buf bytes.Buffer) (string, error) {
 }
 
 func (l *LSM) Put(key interfaces.Comparable, val []byte) error {
-	if l.memtable.Size() >= l.threshold {
-		buf := new(bytes.Buffer)
-		sparseIndex := memtable.NewAVLTree()
-		bloomFilter := bloomfilter.NewBloomFilter(l.threshold, l.falsePositiveRate)
-
-		err := l.memtable.Dump(buf, bloomFilter, sparseIndex, int32(l.sparsityFactor))
-		if err != nil {
-			return err
-		}
-
-		fileName, err := l.writeSSTableData(*buf)
-		if err != nil {
-			return err
-		}
-
-		l.SStables = append(l.SStables, &SSTable{
-			dataLocation: fileName,
-			dataLength:   buf.Len(),
-			sparseIndex:  sparseIndex,
-			bloomfilter:  bloomFilter,
-		})
-
-	}
 	l.memtable.Put(key, val)
+
+	if l.memtable.Size() < l.threshold {
+		return nil
+	}
+
+	buf := new(bytes.Buffer)
+	sparseIndex := memtable.NewAVLTree()
+	bloomFilter := bloomfilter.NewBloomFilter(l.threshold, l.falsePositiveRate)
+
+	err := l.memtable.Dump(buf, bloomFilter, sparseIndex, int32(l.sparsityFactor))
+	if err != nil {
+		return err
+	}
+
+	fileName, err := l.writeSSTableData(*buf)
+	if err != nil {
+		return err
+	}
+
+	l.SStables = append(l.SStables, &SSTable{
+		dataLocation: fileName,
+		dataLength:   buf.Len(),
+		sparseIndex:  sparseIndex,
+		bloomfilter:  bloomFilter,
+	})
+
 	return nil
 }
 
