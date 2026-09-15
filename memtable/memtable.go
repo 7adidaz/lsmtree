@@ -8,7 +8,7 @@ import (
 	"io"
 	"main/bloomfilter"
 	"main/interfaces"
-	"main/util"
+	"main/record"
 )
 
 type MemTable struct {
@@ -85,7 +85,7 @@ func (t *MemTable) Dump(file io.Writer,
 		}
 		i++
 
-		if err := util.WriteEntry(buf, entry.Key, entry.Value); err != nil {
+		if err := record.WriteEntry(buf, entry.Key, entry.Value); err != nil {
 			return err
 		}
 	}
@@ -93,7 +93,6 @@ func (t *MemTable) Dump(file io.Writer,
 	if _, err := file.Write(buf.Bytes()); err != nil {
 		return fmt.Errorf("error writing buffer to file")
 	}
-	t.tree.Clear()
 
 	return nil
 }
@@ -120,7 +119,7 @@ func (t *MemTable) Load(buf io.Reader,
 	startOfCurrKey := 0
 	for {
 		startOfCurrKey = rd.offset
-		key, valueBytes, err := util.ReadEntry(rd)
+		key, valueBytes, err := record.ReadEntry(rd)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -143,4 +142,8 @@ func (t *MemTable) Load(buf io.Reader,
 	}
 
 	return nil
+}
+
+func (t *MemTable) Clear() {
+	t.tree.Clear()
 }

@@ -2,8 +2,6 @@ package lsmtree
 
 import (
 	"bytes"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,15 +12,7 @@ import (
 	"main/bloomfilter"
 	"main/interfaces"
 	"main/memtable"
-	"main/util"
 )
-
-type SSTable struct {
-	dataLocation string
-	dataLength   int
-	sparseIndex  memtable.MemTableImplementation
-	bloomfilter  bloomfilter.BloomFilterImplementation
-}
 
 type LSM struct {
 	memtable          memtable.MemTable
@@ -31,6 +21,7 @@ type LSM struct {
 	threshold         uint32
 	falsePositiveRate float64
 	dataPath          string
+	wal               *WriteAheadLog
 }
 
 var TOMBSTONE = []byte{0x7f}
@@ -40,30 +31,36 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 	cwd, _ := os.Getwd()
 	dataPath := filepath.Join(cwd, "data")
 
+	if err := os.MkdirAll(dataPath, 0o755); err != nil {
+		panic(err)
+	}
+
 	lsm := &LSM{
 		threshold:         threshold,
 		sparsityFactor:    sparsityFactor,
 		falsePositiveRate: falsePositiveRate,
 		memtable:          *memtable.NewMemTable(memtable.NewAVLTree()),
 		dataPath:          dataPath,
+		wal:               &WriteAheadLog{filepath.Join(dataPath, walFileName)},
 	}
 
-	err := lsm.loadSSTables(dataPath)
-	if err != nil {
+	if err := lsm.loadSSTables(dataPath); err != nil {
+		panic(err)
+	}
+
+	if err := lsm.wal.Replay(&lsm.memtable); err != nil {
 		panic(err)
 	}
 
 	return lsm
 }
 
-func (l *LSM) loadSSTables(dataPath string) error {
-	if err := os.MkdirAll(dataPath, 0o755); err != nil {
-		return err
-	}
-
+// sstableFiles lists the SSTables in dataPath oldest first, which is the order
+// Get depends on: later tables shadow earlier ones.
+func sstableFiles(dataPath string) ([]string, error) {
 	entries, err := os.ReadDir(dataPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	type fileEntry struct {
@@ -73,9 +70,13 @@ func (l *LSM) loadSSTables(dataPath string) error {
 
 	var files []fileEntry
 	for _, e := range entries {
+		if e.Name() == walFileName {
+			continue
+		}
+
 		info, err := e.Info()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		files = append(files, fileEntry{name: e.Name(), modTime: info.ModTime()})
 	}
@@ -84,41 +85,33 @@ func (l *LSM) loadSSTables(dataPath string) error {
 		return files[i].modTime.Before(files[j].modTime)
 	})
 
+	paths := make([]string, 0, len(files))
 	for _, e := range files {
-		filePath := filepath.Join(dataPath, e.name)
-		f, err := os.Open(filePath)
-		if err != nil {
-			return err
-		}
-
-		sparseIndex := memtable.NewAVLTree()
-		bloomFilter := bloomfilter.NewBloomFilter(l.threshold, l.falsePositiveRate)
-		loaded := memtable.NewMemTable(memtable.NewAVLTree())
-
-		buf := new(bytes.Buffer)
-		_, err = buf.ReadFrom(f)
-		f.Close()
-		if err != nil {
-			return err
-		}
-
-		dataLength := buf.Len()
-
-		err = loaded.Load(buf, bloomFilter, sparseIndex, l.sparsityFactor)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Loaded SSTable from %s\n", filePath)
-		l.SStables = append(l.SStables, &SSTable{
-			dataLocation: filePath,
-			dataLength:   dataLength,
-			sparseIndex:  sparseIndex,
-			bloomfilter:  bloomFilter,
-		})
+		paths = append(paths, filepath.Join(dataPath, e.name))
 	}
 
-	fmt.Printf("Loaded %d SStables\n", len(files))
+	return paths, nil
+}
+
+func (l *LSM) loadSSTables(dataPath string) error {
+	if err := os.MkdirAll(dataPath, 0o755); err != nil {
+		return err
+	}
+
+	paths, err := sstableFiles(dataPath)
+	if err != nil {
+		return err
+	}
+
+	for _, path := range paths {
+		table, err := openSSTable(path, l.sparsityFactor, l.threshold, l.falsePositiveRate)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Loaded SSTable from %s\n", path)
+		l.SStables = append(l.SStables, table)
+	}
 
 	return nil
 }
@@ -132,7 +125,8 @@ func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
 		return true, val, nil
 	}
 
-	for _, v := range slices.Backward(l.SStables) {
+	tables := l.SStables
+	for _, v := range slices.Backward(tables) {
 		SSTable := *v
 		found, data, err := SSTable.Find(key)
 		if err != nil {
@@ -155,9 +149,12 @@ func (l *LSM) writeSSTableData(buf bytes.Buffer) (string, error) {
 	defer f.Close()
 
 	fmt.Println("Writing SSTable to:", fileName)
-	_, err = f.Write(buf.Bytes())
-	if err != nil {
-		fmt.Println("Error creating file:", err)
+	if _, err = f.Write(buf.Bytes()); err != nil {
+		fmt.Println("Error writing file:", err)
+		return "", err
+	}
+
+	if err := f.Sync(); err != nil {
 		return "", err
 	}
 
@@ -165,6 +162,10 @@ func (l *LSM) writeSSTableData(buf bytes.Buffer) (string, error) {
 }
 
 func (l *LSM) Put(key interfaces.Comparable, val []byte) error {
+	if err := l.wal.Append(key, val); err != nil {
+		return err
+	}
+
 	l.memtable.Put(key, val)
 
 	if l.memtable.Size() < l.threshold {
@@ -184,6 +185,7 @@ func (l *LSM) Put(key interfaces.Comparable, val []byte) error {
 	if err != nil {
 		return err
 	}
+	l.memtable.Clear()
 
 	l.SStables = append(l.SStables, &SSTable{
 		dataLocation: fileName,
@@ -192,82 +194,14 @@ func (l *LSM) Put(key interfaces.Comparable, val []byte) error {
 		bloomfilter:  bloomFilter,
 	})
 
+	err = os.Truncate(l.wal.dataLocation, 0)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (l *LSM) Delete(key interfaces.Comparable) {
 	l.Put(key, TOMBSTONE)
-}
-
-func (t *SSTable) readSSTableData(lowerBound uint32, upperBound uint32) (*bytes.Reader, error) {
-	buffer := make([]byte, upperBound-lowerBound)
-	f, err := os.Open(t.dataLocation)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	_, err = f.Seek(int64(lowerBound), io.SeekStart)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = f.Read(buffer)
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes.NewReader(buffer), nil
-}
-
-func (t *SSTable) Find(key interfaces.Comparable) (bool, []byte, error) {
-	found, err := t.bloomfilter.Contains(key)
-	if err != nil {
-		return false, nil, err
-	}
-	if !found {
-		return false, nil, nil
-	}
-
-	// the smallest key in the table is always sampled, so a missing floor means
-	// the key sorts before every key in this SSTable.
-	floorBytes := t.sparseIndex.Floor(key)
-	if len(floorBytes) != 4 {
-		return false, nil, nil
-	}
-	lowerBound, err := util.ParseInt32(bytes.NewReader(floorBytes))
-	if err != nil {
-		return false, nil, err
-	}
-
-	// no ceiling, or the key is itself a sampled offset: read to the end.
-	upperBound := uint32(t.dataLength)
-	if ceilBytes := t.sparseIndex.Ceil(key); len(ceilBytes) == 4 {
-		if bound, err := util.ParseInt32(bytes.NewReader(ceilBytes)); err == nil && bound > lowerBound {
-			upperBound = bound
-		}
-	}
-
-	dataBuf, err := t.readSSTableData(lowerBound, upperBound)
-	if err != nil {
-		return false, nil, err
-	}
-
-	for {
-		parsedKey, valueBytes, err := util.ReadEntry(dataBuf)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return false, nil, err
-		}
-
-		if key.Compare(parsedKey) == 0 {
-			if bytes.Equal(valueBytes, TOMBSTONE) {
-				return true, nil, nil
-			}
-			return true, valueBytes, nil
-		}
-	}
-	return false, nil, nil
 }

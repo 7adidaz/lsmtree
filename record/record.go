@@ -1,4 +1,4 @@
-package util
+package record
 
 import (
 	"bytes"
@@ -9,15 +9,6 @@ import (
 	"main/interfaces"
 	"main/keys"
 )
-
-func ToByteArray(data any) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.BigEndian, data)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
 
 func ParseInt32(buf io.Reader) (uint32, error) {
 	intBytes := make([]byte, 4)
