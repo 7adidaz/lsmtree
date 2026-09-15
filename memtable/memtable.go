@@ -3,11 +3,11 @@ package memtable
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"main/bloomfilter"
 	"main/interfaces"
-	"main/keys"
 	"main/util"
 )
 
@@ -60,7 +60,6 @@ func (t *MemTable) Dump(file io.Writer,
 	sampling int32) error {
 	/*
 		     * Binary Format:
-		     * [4 bytes] - Table size (uint32)
 		     * For each entry:
 		     *   [1 byte]  - Key type (0x00 for IntKey)
 		     *   [4 bytes] - Key value (uint32)
@@ -72,16 +71,8 @@ func (t *MemTable) Dump(file io.Writer,
 
 	buf := new(bytes.Buffer)
 
-	if err := binary.Write(buf, binary.BigEndian, t.Size()); err != nil {
-		return fmt.Errorf("error serializing table size: %w", err)
-	}
-
 	i := int32(0)
 	for _, entry := range t.tree.ToKVs() {
-		// if bytes.Equal(entry.value, []byte{0x7f}) {
-		//     continue
-		// }
-
 		if bloomfilter != nil {
 			bloomfilter.Insert(entry.Key)
 		}
@@ -94,24 +85,8 @@ func (t *MemTable) Dump(file io.Writer,
 		}
 		i++
 
-		// Write key
-		keyBytes, err := entry.Key.ToBytes()
-		if err != nil {
-			return fmt.Errorf("error serializing key: %w", err)
-		}
-		if _, err := buf.Write(keyBytes); err != nil {
-			return fmt.Errorf("error writing key: %w", err)
-		}
-
-		// Write value length
-		valueLen := int32(len(entry.Value))
-		if err := binary.Write(buf, binary.BigEndian, valueLen); err != nil {
-			return fmt.Errorf("error serializing value length: %w", err)
-		}
-
-		// Write value data
-		if _, err := buf.Write(entry.Value); err != nil {
-			return fmt.Errorf("error writing value: %w", err)
+		if err := util.WriteEntry(buf, entry.Key, entry.Value); err != nil {
+			return err
 		}
 	}
 
@@ -141,28 +116,16 @@ func (t *MemTable) Load(buf io.Reader,
 
 	rd := &offsetReader{r: buf}
 
-	tableLength, err := util.ParseInt32(rd)
-	if err != nil {
-		return fmt.Errorf("error parsing table size: %w", err)
-	}
-
 	j := uint32(0)
 	startOfCurrKey := 0
-	for range tableLength {
+	for {
 		startOfCurrKey = rd.offset
-		key, err := keys.ParseKey(rd)
+		key, valueBytes, err := util.ReadEntry(rd)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return err
-		}
-
-		valueLength, err := util.ParseInt32(rd)
-		if err != nil {
-			return fmt.Errorf("error parsing value length: %w", err)
-		}
-
-		valueBytes := make([]byte, valueLength)
-		if _, err := io.ReadFull(rd, valueBytes); err != nil {
-			return fmt.Errorf("error parsing value data: %w", err)
 		}
 
 		if bloomfilter != nil {

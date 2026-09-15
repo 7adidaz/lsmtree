@@ -91,9 +91,9 @@ func TestMemTableDump(t *testing.T) {
 	buf := new(bytes.Buffer)
 	memtable.Dump(buf, nil, nil, 0)
 
-	//  2 values|key->type-value|value len|TOMBSTONE|key->type-value|value len| data
-	//  00000002|(00)00000001   |00000001 |7f       |(00)00000002   |00000006 |76616c756532
-	bufExpectedVal := "000000020000000001000000017f00000000020000000676616c756532"
+	//  key->type-value|value len|TOMBSTONE|key->type-value|value len| data
+	//  (00)00000001   |00000001 |7f       |(00)00000002   |00000006 |76616c756532
+	bufExpectedVal := "0000000001000000017f00000000020000000676616c756532"
 	if hex.EncodeToString(buf.Bytes()) != bufExpectedVal {
 		t.Errorf("Output of the flush doesn't match expected value")
 	}
@@ -107,7 +107,7 @@ func TestMemTableLoad(t *testing.T) {
 	memtable := NewMemTable(avl)
 
 	readBuf := new(bytes.Buffer)
-	dumpBytes, err := hex.DecodeString("000000020000000001000000017f00000000020000000676616c756532")
+	dumpBytes, err := hex.DecodeString("0000000001000000017f00000000020000000676616c756532")
 	if err != nil {
 		t.Error("Unable to decode string")
 	}

@@ -2,19 +2,27 @@ package lsmtree
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
 	"fmt"
 	"main/bloomfilter"
 	"main/interfaces"
-	"main/keys"
 	"main/memtable"
 	"main/util"
 )
+
+type SSTable struct {
+	dataLocation string
+	dataLength   int
+	sparseIndex  memtable.MemTableImplementation
+	bloomfilter  bloomfilter.BloomFilterImplementation
+}
 
 type LSM struct {
 	memtable          memtable.MemTable
@@ -23,14 +31,6 @@ type LSM struct {
 	threshold         uint32
 	falsePositiveRate float64
 	dataPath          string
-}
-
-type SSTable struct {
-	// data         bytes.Buffer
-	dataLocation string
-	dataLength   int
-	sparseIndex  memtable.MemTableImplementation
-	bloomfilter  bloomfilter.BloomFilterImplementation
 }
 
 var TOMBSTONE = []byte{0x7f}
@@ -131,8 +131,9 @@ func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
 		}
 		return true, val, nil
 	}
-	for i := len(l.SStables) - 1; i >= 0; i-- {
-		SSTable := *l.SStables[i]
+
+	for _, v := range slices.Backward(l.SStables) {
+		SSTable := *v
 		found, data, err := SSTable.Find(key)
 		if err != nil {
 			return false, nil, err
@@ -228,14 +229,23 @@ func (t *SSTable) Find(key interfaces.Comparable) (bool, []byte, error) {
 		return false, nil, nil
 	}
 
-	lowerBound, _ := util.ParseInt32(bytes.NewReader(t.sparseIndex.Floor(key)))
-	upperBound, _ := util.ParseInt32(bytes.NewReader(t.sparseIndex.Ceil(key)))
-	if lowerBound == 0 {
+	// the smallest key in the table is always sampled, so a missing floor means
+	// the key sorts before every key in this SSTable.
+	floorBytes := t.sparseIndex.Floor(key)
+	if len(floorBytes) != 4 {
 		return false, nil, nil
 	}
-	// this case happens when the element itself if found.
-	if lowerBound >= upperBound {
-		upperBound = uint32(t.dataLength)
+	lowerBound, err := util.ParseInt32(bytes.NewReader(floorBytes))
+	if err != nil {
+		return false, nil, err
+	}
+
+	// no ceiling, or the key is itself a sampled offset: read to the end.
+	upperBound := uint32(t.dataLength)
+	if ceilBytes := t.sparseIndex.Ceil(key); len(ceilBytes) == 4 {
+		if bound, err := util.ParseInt32(bytes.NewReader(ceilBytes)); err == nil && bound > lowerBound {
+			upperBound = bound
+		}
 	}
 
 	dataBuf, err := t.readSSTableData(lowerBound, upperBound)
@@ -243,24 +253,16 @@ func (t *SSTable) Find(key interfaces.Comparable) (bool, []byte, error) {
 		return false, nil, err
 	}
 
-	for dataBuf.Len() > 0 {
-		parsed_key, err := keys.ParseKey(dataBuf)
+	for {
+		parsedKey, valueBytes, err := util.ReadEntry(dataBuf)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return false, nil, err
 		}
 
-		valueLength, err := util.ParseInt32(dataBuf)
-		if err != nil {
-			return false, nil, fmt.Errorf("error parsing value length: %w", err)
-		}
-
-		valueBytes := make([]byte, valueLength)
-		n, err := dataBuf.Read(valueBytes)
-		if err != nil || n != int(valueLength) {
-			return false, nil, fmt.Errorf("error parsing value data: %w", err)
-		}
-
-		if key.Compare(parsed_key) == 0 {
+		if key.Compare(parsedKey) == 0 {
 			if bytes.Equal(valueBytes, TOMBSTONE) {
 				return true, nil, nil
 			}
