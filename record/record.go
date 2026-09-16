@@ -10,6 +10,39 @@ import (
 	"main/keys"
 )
 
+type RecordType uint8
+
+const (
+	RecordValue     RecordType = 0x00
+	RecordTombstone RecordType = 0x01
+)
+
+type Record struct {
+	Type  RecordType
+	Value []byte
+}
+
+func (r *Record) ToBytes() []byte {
+	payload := make([]byte, 0, len(r.Value)+1)
+	payload = append(payload, byte(r.Type))
+	return append(payload, r.Value...)
+}
+
+func Parse(payload []byte) (*Record, error) {
+	if len(payload) == 0 {
+		return nil, errors.New("record: empty payload")
+	}
+
+	recType := RecordType(payload[0])
+	switch recType {
+	case RecordValue, RecordTombstone:
+	default:
+		return nil, fmt.Errorf("record: unknown record type 0x%02x", payload[0])
+	}
+
+	return &Record{Type: recType, Value: payload[1:]}, nil
+}
+
 func ParseInt32(buf io.Reader) (uint32, error) {
 	intBytes := make([]byte, 4)
 	if n, err := buf.Read(intBytes); err != nil || n != 4 {
@@ -18,13 +51,13 @@ func ParseInt32(buf io.Reader) (uint32, error) {
 	return binary.BigEndian.Uint32(intBytes), nil
 }
 
-// WriteEntry appends one key/value record in the SSTable layout:
+// WriteEntry appends one key/payload record in the SSTable layout:
 //
 //	[1 byte]  - key type tag
 //	[4+ bytes]- key data (uint32, or length + bytes for strings)
-//	[4 bytes] - value length (int32)
-//	[N bytes] - value data
-func WriteEntry(w io.Writer, key interfaces.Comparable, value []byte) error {
+//	[4 bytes] - payload length (int32)
+//	[N bytes] - payload (a serialized Record; see Record.ToBytes)
+func WriteEntry(w io.Writer, key interfaces.Comparable, payload []byte) error {
 	keyBytes, err := key.ToBytes()
 	if err != nil {
 		return fmt.Errorf("error serializing key: %w", err)
@@ -33,12 +66,12 @@ func WriteEntry(w io.Writer, key interfaces.Comparable, value []byte) error {
 		return fmt.Errorf("error writing key: %w", err)
 	}
 
-	if err := binary.Write(w, binary.BigEndian, int32(len(value))); err != nil {
-		return fmt.Errorf("error serializing value length: %w", err)
+	if err := binary.Write(w, binary.BigEndian, int32(len(payload))); err != nil {
+		return fmt.Errorf("error serializing payload length: %w", err)
 	}
 
-	if _, err := w.Write(value); err != nil {
-		return fmt.Errorf("error writing value: %w", err)
+	if _, err := w.Write(payload); err != nil {
+		return fmt.Errorf("error writing payload: %w", err)
 	}
 
 	return nil
@@ -46,7 +79,7 @@ func WriteEntry(w io.Writer, key interfaces.Comparable, value []byte) error {
 
 // ReadEntry reads back one record written by WriteEntry. It returns a bare
 // io.EOF at a clean record boundary, and a wrapped error for an EOF part-way
-// through a record.
+// through a record. The payload is returned undecoded.
 func ReadEntry(r io.Reader) (interfaces.Comparable, []byte, error) {
 	tag := make([]byte, 1)
 	if _, err := io.ReadFull(r, tag); err != nil {
@@ -62,15 +95,15 @@ func ReadEntry(r io.Reader) (interfaces.Comparable, []byte, error) {
 		return nil, nil, err
 	}
 
-	valueLength, err := ParseInt32(r)
+	payloadLength, err := ParseInt32(r)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error parsing value length: %w", err)
+		return nil, nil, fmt.Errorf("error parsing payload length: %w", err)
 	}
 
-	value := make([]byte, valueLength)
-	if _, err := io.ReadFull(r, value); err != nil {
-		return nil, nil, fmt.Errorf("error parsing value data: %w", err)
+	payload := make([]byte, payloadLength)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return nil, nil, fmt.Errorf("error parsing payload data: %w", err)
 	}
 
-	return key, value, nil
+	return key, payload, nil
 }

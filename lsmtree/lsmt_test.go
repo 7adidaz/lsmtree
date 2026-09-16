@@ -1,6 +1,7 @@
 package lsmtree
 
 import (
+	"bytes"
 	"fmt"
 	"main/keys"
 	"math/rand"
@@ -27,10 +28,12 @@ func TestLSMTree(t *testing.T) {
 	if !found || got == nil || string(got) != "bar" {
 		t.Errorf("Expected value 'bar', got '%v'", got)
 	}
-	lsm.Delete(key)
+	if err := lsm.Delete(key); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
 	found, got, _ = lsm.Get(key)
-	if found && got != nil {
-		t.Errorf("Expected nil after delete, got '%v'", got)
+	if found {
+		t.Errorf("Expected key to be absent after delete, got '%s'", got)
 	}
 }
 
@@ -144,7 +147,9 @@ func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
 	}
 	for i := range n / 2 {
 		k := keysArr[i]
-		lsm.Delete(keys.NewIntKey(uint32(k)))
+		if err := lsm.Delete(keys.NewIntKey(uint32(k))); err != nil {
+			t.Fatalf("Delete failed for key %d: %v", k, err)
+		}
 	}
 	for i := range n / 2 {
 		k := keysArr[i]
@@ -152,8 +157,8 @@ func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Get failed for deleted key %d: %v", k, err)
 		}
-		if found && got != nil {
-			t.Errorf("Expected nil for deleted key '%d', got '%s'", k, string(got))
+		if found {
+			t.Errorf("Expected deleted key '%d' to be absent, got '%s'", k, string(got))
 		}
 	}
 	for i := n / 2; i < n; i++ {
@@ -256,4 +261,75 @@ func chdirTemp(tb testing.TB) {
 			tb.Fatal(err)
 		}
 	})
+}
+
+// The tombstone lands in a newer SSTable than the value, so Get has to stop at
+// the tombstone instead of falling through to the older table.
+func TestDeleteSurvivesFlushIntoOlderSSTable(t *testing.T) {
+	chdirTemp(t)
+
+	const threshold = 10
+	lsm := NewLSMTree(threshold, 2, 0.01)
+	victim := keys.NewStringKey("victim")
+
+	if err := lsm.Put(victim, []byte("v1")); err != nil {
+		t.Fatal(err)
+	}
+	for i := range threshold - 1 {
+		if err := lsm.Put(keys.NewStringKey(fmt.Sprintf("a-%02d", i)), []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := lsm.Delete(victim); err != nil {
+		t.Fatal(err)
+	}
+	for i := range threshold - 1 {
+		if err := lsm.Put(keys.NewStringKey(fmt.Sprintf("b-%02d", i)), []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(lsm.SStables) < 2 {
+		t.Fatalf("expected the value and the tombstone in separate SSTables, got %d", len(lsm.SStables))
+	}
+
+	found, got, err := lsm.Get(victim)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if found {
+		t.Errorf("deleted key was resurrected from an older SSTable with %q", got)
+	}
+}
+
+// A value of 0x7f used to be swallowed as a tombstone sentinel.
+func TestArbitraryByteValuesRoundTrip(t *testing.T) {
+	chdirTemp(t)
+
+	lsm := NewLSMTree(10, 2, 0.01)
+	cases := map[string][]byte{
+		"tombstone-byte": {0x7f},
+		"record-value":   {0x00},
+		"record-tomb":    {0x01},
+		"empty":          {},
+	}
+	for name, want := range cases {
+		if err := lsm.Put(keys.NewStringKey(name), want); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, want := range cases {
+		found, got, err := lsm.Get(keys.NewStringKey(name))
+		if err != nil {
+			t.Fatalf("%s: Get failed: %v", name, err)
+		}
+		if !found {
+			t.Errorf("%s: expected found", name)
+			continue
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("%s: got %v, want %v", name, got, want)
+		}
+	}
 }

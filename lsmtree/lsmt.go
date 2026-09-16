@@ -12,6 +12,7 @@ import (
 	"main/bloomfilter"
 	"main/interfaces"
 	"main/memtable"
+	"main/record"
 )
 
 type LSM struct {
@@ -24,9 +25,13 @@ type LSM struct {
 	wal               *WriteAheadLog
 }
 
-var TOMBSTONE = []byte{0x7f}
-
 func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float64) *LSM {
+	if sparsityFactor == 0 {
+		panic("lsmtree: sparsityFactor must be >= 1 (1 = index every key)")
+	}
+	if falsePositiveRate <= 0 || falsePositiveRate >= 1 {
+		panic("lsmtree: falsePositiveRate must be between 0 and 1 (exclusive)")
+	}
 
 	cwd, _ := os.Getwd()
 	dataPath := filepath.Join(cwd, "data")
@@ -117,26 +122,32 @@ func (l *LSM) loadSSTables(dataPath string) error {
 }
 
 func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
-	found, val := l.memtable.Get(key)
-	if found {
-		if bytes.Equal(val, TOMBSTONE) {
-			return false, nil, nil
-		}
-		return true, val, nil
+	if found, payload := l.memtable.Get(key); found {
+		return resolve(payload)
 	}
 
-	tables := l.SStables
-	for _, v := range slices.Backward(tables) {
-		SSTable := *v
-		found, data, err := SSTable.Find(key)
+	for _, table := range slices.Backward(l.SStables) {
+		payload, err := table.Find(key)
 		if err != nil {
 			return false, nil, err
 		}
-		if found {
-			return true, data, nil
+		if payload != nil {
+			return resolve(payload)
 		}
 	}
 	return false, nil, nil
+}
+
+// resolve is the only place that decodes a payload or reads a record type.
+func resolve(payload []byte) (bool, []byte, error) {
+	rec, err := record.Parse(payload)
+	if err != nil {
+		return false, nil, err
+	}
+	if rec.Type == record.RecordTombstone {
+		return false, nil, nil
+	}
+	return true, rec.Value, nil
 }
 
 func (l *LSM) writeSSTableData(buf bytes.Buffer) (string, error) {
@@ -162,11 +173,21 @@ func (l *LSM) writeSSTableData(buf bytes.Buffer) (string, error) {
 }
 
 func (l *LSM) Put(key interfaces.Comparable, val []byte) error {
-	if err := l.wal.Append(key, val); err != nil {
+	rec := &record.Record{Type: record.RecordValue, Value: val}
+	return l.put(key, rec.ToBytes())
+}
+
+func (l *LSM) Delete(key interfaces.Comparable) error {
+	rec := &record.Record{Type: record.RecordTombstone}
+	return l.put(key, rec.ToBytes())
+}
+
+func (l *LSM) put(key interfaces.Comparable, payload []byte) error {
+	if err := l.wal.Append(key, payload); err != nil {
 		return err
 	}
 
-	l.memtable.Put(key, val)
+	l.memtable.Put(key, payload)
 
 	if l.memtable.Size() < l.threshold {
 		return nil
@@ -200,8 +221,4 @@ func (l *LSM) Put(key interfaces.Comparable, val []byte) error {
 	}
 
 	return nil
-}
-
-func (l *LSM) Delete(key interfaces.Comparable) {
-	l.Put(key, TOMBSTONE)
 }

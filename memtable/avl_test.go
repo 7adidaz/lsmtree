@@ -49,22 +49,6 @@ func TestComplexTree(t *testing.T) {
 		}
 	}
 
-	// Delete some keys and verify tree remains balanced
-	deleteKeys := []uint32{30, 70, 20, 65}
-	for _, key := range deleteKeys {
-		avlTree.Delete(keys.NewIntKey(key))
-		found, value := avlTree.Get(keys.NewIntKey(key))
-		if found && value != nil {
-			t.Errorf("Key %d should have been deleted", key)
-		}
-	}
-
-	// Size should be unchanged after logical deletion (our implementation uses tombstones)
-	if avlTree.Size() != uint32(len(testKeys)) {
-		t.Errorf("Expected size %d after deletions (using tombstones), got %d",
-			len(testKeys), avlTree.Size())
-	}
-
 	// Insert some new keys
 	newKeys := []uint32{42, 58, 90, 5}
 	for _, key := range newKeys {
@@ -96,7 +80,7 @@ func TestComplexTree(t *testing.T) {
 
 	// avlTree.Dump(true)
 
-	remainingKeys := len(testKeys) - len(deleteKeys) + len(newKeys)
+	remainingKeys := len(testKeys) + len(newKeys)
 	maxExpectedHeight := int(1.44*math.Log2(float64(remainingKeys+2)) - 0.328)
 
 	actualHeight := avlTree.head.height

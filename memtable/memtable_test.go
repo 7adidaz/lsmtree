@@ -50,13 +50,6 @@ func TestMemTable(t *testing.T) {
 		t.Errorf("Expected nil for non-existent key, got %s", result)
 	}
 
-	// Test Delete operation
-	memtable.Delete(key1)
-	found, result = memtable.Get(key1)
-	if found && result != nil {
-		t.Errorf("Expected nil for deleted key, got %s", result)
-	}
-
 	// Ensure key2 still exists
 	found, result = memtable.Get(key2)
 	if !found || !bytes.Equal(result, val3) {
@@ -64,7 +57,7 @@ func TestMemTable(t *testing.T) {
 	}
 
 	// Test size
-	if avl.size != 2 { // key1 (tombstoned) and key2
+	if avl.size != 2 { // key1 and key2
 		t.Errorf("Expected size 2, got %d", avl.size)
 	}
 
@@ -85,14 +78,14 @@ func TestMemTableDump(t *testing.T) {
 	val2 := []byte("value2")
 	memtable.Put(key2, val2)
 
-	memtable.Delete(key1)
+	memtable.Put(key1, []byte{0x7f})
 
 	// avl.Dump(true)
 	buf := new(bytes.Buffer)
 	memtable.Dump(buf, nil, nil, 0)
 
-	//  key->type-value|value len|TOMBSTONE|key->type-value|value len| data
-	//  (00)00000001   |00000001 |7f       |(00)00000002   |00000006 |76616c756532
+	//  key->type-value|value len|value|key->type-value|value len| data
+	//  (00)00000001   |00000001 |7f   |(00)00000002   |00000006 |76616c756532
 	bufExpectedVal := "0000000001000000017f00000000020000000676616c756532"
 	if hex.EncodeToString(buf.Bytes()) != bufExpectedVal {
 		t.Errorf("Output of the flush doesn't match expected value")
@@ -120,13 +113,8 @@ func TestMemTableLoad(t *testing.T) {
 	}
 
 	found, result := memtable.Get(keys.NewIntKey(1))
-	if found && result != nil {
-		t.Errorf("Expected nil for deleted key, got %s", result)
-	}
-
-	found, result = memtable.Get(keys.NewIntKey(1))
-	if found && result != nil {
-		t.Errorf("Expected nil for deleted key, got %s", result)
+	if !found || !bytes.Equal(result, []byte{0x7f}) {
+		t.Errorf("Expected the stored 0x7f value for key 1, got %v", result)
 	}
 
 	found, result = memtable.Get(keys.NewIntKey(2))

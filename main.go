@@ -11,19 +11,18 @@ import (
 )
 
 func main() {
-    var threshold uint32 = 50
-    var sparsityFactor uint32 = 2
-    var falsePositiveRate float64 = 0.1
+	var threshold uint32 = 50
+	var sparsityFactor uint32 = 2
+	var falsePositiveRate float64 = 0.1
 
-    println("Initializing LSM Tree with:")
-    println("Threshold:", threshold)
-    println("Sparsity factor:", sparsityFactor)
-    println("False positive rate:", falsePositiveRate)
-
+	println("Initializing LSM Tree with:")
+	println("Threshold:", threshold)
+	println("Sparsity factor:", sparsityFactor)
+	println("False positive rate:", falsePositiveRate)
 
 	r := gin.Default()
 
-    lsm := lsmtree.NewLSMTree(threshold, sparsityFactor, falsePositiveRate)
+	lsm := lsmtree.NewLSMTree(threshold, sparsityFactor, falsePositiveRate)
 
 	// Define a simple GET endpoint
 	r.GET("/ping", func(c *gin.Context) {
@@ -74,7 +73,10 @@ func main() {
 		key := c.Params.ByName("key")
 
 		parsed_key := parseKey(key)
-		lsm.Delete(parsed_key)
+		if err := lsm.Delete(parsed_key); err != nil {
+			c.String(http.StatusInternalServerError, "something went wrong deleting the key")
+			return
+		}
 
 		c.String(http.StatusOK, "Key: "+key+" is deleted\n")
 	})
@@ -83,7 +85,6 @@ func main() {
 	// Server will listen on 0.0.0.0:8080 (localhost:8080 on Windows)
 	r.Run()
 }
-
 
 func parseKey(key string) interfaces.Comparable {
 	var parsed_key interfaces.Comparable = keys.NewStringKey(key)

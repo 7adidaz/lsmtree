@@ -75,24 +75,27 @@ func (t *SSTable) readSSTableData(lowerBound uint32, upperBound uint32) (*bytes.
 	return bytes.NewReader(buffer), nil
 }
 
-func (t *SSTable) Find(key interfaces.Comparable) (bool, []byte, error) {
+// Find returns the stored payload, or nil if this table has nothing to say
+// about the key and the caller should look in older tables. A tombstone is an
+// answer, so it comes back as a payload; decoding it is LSM.Get's job.
+func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
 	found, err := t.bloomfilter.Contains(key)
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 	if !found {
-		return false, nil, nil
+		return nil, nil
 	}
 
 	// the smallest key in the table is always sampled, so a missing floor means
 	// the key sorts before every key in this SSTable.
 	floorBytes := t.sparseIndex.Floor(key)
 	if len(floorBytes) != 4 {
-		return false, nil, nil
+		return nil, nil
 	}
 	lowerBound, err := record.ParseInt32(bytes.NewReader(floorBytes))
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
 	// no ceiling, or the key is itself a sampled offset: read to the end.
@@ -105,24 +108,21 @@ func (t *SSTable) Find(key interfaces.Comparable) (bool, []byte, error) {
 
 	dataBuf, err := t.readSSTableData(lowerBound, upperBound)
 	if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 
 	for {
-		parsedKey, valueBytes, err := record.ReadEntry(dataBuf)
+		parsedKey, payload, err := record.ReadEntry(dataBuf)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return false, nil, err
+			return nil, err
 		}
 
 		if key.Compare(parsedKey) == 0 {
-			if bytes.Equal(valueBytes, TOMBSTONE) {
-				return true, nil, nil
-			}
-			return true, valueBytes, nil
+			return payload, nil
 		}
 	}
-	return false, nil, nil
+	return nil, nil
 }

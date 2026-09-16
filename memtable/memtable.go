@@ -27,7 +27,6 @@ func NewMemTable(impl MemTableImplementation) *MemTable {
 type MemTableImplementation interface {
 	Get(key interfaces.Comparable) (bool, []byte)
 	Put(key interfaces.Comparable, val []byte)
-	Delete(key interfaces.Comparable)
 	Floor(key interfaces.Comparable) []byte
 	Ceil(key interfaces.Comparable) []byte
 	Clear()
@@ -41,10 +40,6 @@ func (t *MemTable) Get(key interfaces.Comparable) (bool, []byte) {
 
 func (t *MemTable) Put(key interfaces.Comparable, val []byte) {
 	t.tree.Put(key, val)
-}
-
-func (t *MemTable) Delete(key interfaces.Comparable) {
-	t.tree.Delete(key)
 }
 
 func (t *MemTable) Size() uint32 {
