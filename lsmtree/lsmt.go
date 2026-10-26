@@ -45,7 +45,6 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 		},
 		memtable: *memtable.NewMemTable(memtable.NewAVLTree()),
 		dataPath: dataPath,
-		wal:      &WriteAheadLog{filepath.Join(dataPath, walFileName)},
 	}
 
 	if err := lsm.loadSSTables(dataPath); err != nil {
@@ -53,6 +52,11 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 	}
 
 	lsm.nextID, err = nextFreeID(dataPath)
+	if err != nil {
+		panic(err)
+	}
+
+	lsm.wal, err = openWAL(filepath.Join(dataPath, walFileName))
 	if err != nil {
 		panic(err)
 	}
