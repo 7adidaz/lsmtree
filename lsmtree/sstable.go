@@ -1,7 +1,9 @@
 package lsmtree
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"io"
 	"os"
@@ -19,39 +21,105 @@ type SSTable struct {
 	bloomfilter  bloomfilter.BloomFilterImplementation
 }
 
-// openSSTable reads an SSTable file back into memory, rebuilding the bloom
-// filter and sparse index that Dump produced when the file was written.
-func openSSTable(path string, sparsityFactor uint32, threshold uint32, falsePositiveRate float64) (*SSTable, error) {
+type sstableOptions struct {
+	threshold         uint32
+	sparsityFactor    uint32
+	falsePositiveRate float64
+}
+
+// openSSTable streams an SSTable file once, rebuilding the bloom filter and
+// sparse index that were built when the file was written.
+func openSSTable(path string, opts sstableOptions) (*SSTable, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
-	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(f)
-	f.Close()
+	info, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
 
-	dataLength := buf.Len()
-
 	sparseIndex := memtable.NewAVLTree()
-	bloomFilter := bloomfilter.NewBloomFilter(threshold, falsePositiveRate)
+	bloomFilter := bloomfilter.NewBloomFilter(opts.threshold, opts.falsePositiveRate)
 
-	// the memtable is a by-product: Load drives the parse, and what we keep is
-	// the filter and the index it fills in along the way.
-	loaded := memtable.NewMemTable(memtable.NewAVLTree())
-	if err := loaded.Load(buf, bloomFilter, sparseIndex, sparsityFactor); err != nil {
+	if err := scanSSTable(bufio.NewReader(f), bloomFilter, sparseIndex, opts.sparsityFactor); err != nil {
 		return nil, err
 	}
 
 	return &SSTable{
 		dataLocation: path,
-		dataLength:   dataLength,
+		dataLength:   int(info.Size()),
 		sparseIndex:  sparseIndex,
 		bloomfilter:  bloomFilter,
 	}, nil
+}
+
+// encodeSSTable writes entries, which must be sorted by key, to w:
+//
+//	For each entry:
+//	  [1 byte]  - Key type (0x00 IntKey, 0x01 StringKey)
+//	  [N bytes] - Key data
+//	  [4 bytes] - Payload length
+//	  [N bytes] - Payload
+//
+// Every key goes into bloomFilter, and every sampling-th key goes into index
+// with its byte offset. Either may be nil.
+func encodeSSTable(w io.Writer, entries []*memtable.Entry,
+	bloomFilter bloomfilter.BloomFilterImplementation,
+	index memtable.MemTableImplementation,
+	sampling uint32) error {
+
+	buf := new(bytes.Buffer)
+	for i, entry := range entries {
+		if bloomFilter != nil {
+			bloomFilter.Insert(entry.Key)
+		}
+		if index != nil && sampling > 0 && uint32(i)%sampling == 0 {
+			index.Put(entry.Key, offsetBytes(buf.Len()))
+		}
+
+		if err := record.WriteEntry(buf, entry.Key, entry.Value); err != nil {
+			return err
+		}
+	}
+
+	_, err := w.Write(buf.Bytes())
+	return err
+}
+
+// scanSSTable reads an SSTable written by encodeSSTable and fills bloomFilter and
+// index exactly as encodeSSTable did. The records themselves are not kept.
+func scanSSTable(r io.Reader,
+	bloomFilter bloomfilter.BloomFilterImplementation,
+	index memtable.MemTableImplementation,
+	sampling uint32) error {
+
+	cr := &countingReader{r: r}
+	for i := uint32(0); ; i++ {
+		start := cr.n
+		key, _, err := record.ReadEntry(cr)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		if bloomFilter != nil {
+			bloomFilter.Insert(key)
+		}
+		if index != nil && sampling > 0 && i%sampling == 0 {
+			index.Put(key, offsetBytes(int(start)))
+		}
+	}
+}
+
+func offsetBytes(offset int) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, uint32(offset))
+	return b
 }
 
 func (t *SSTable) readSSTableData(lowerBound uint32, upperBound uint32) (*bytes.Reader, error) {

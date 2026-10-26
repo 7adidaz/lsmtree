@@ -16,13 +16,11 @@ import (
 )
 
 type LSM struct {
-	memtable          memtable.MemTable
-	SStables          []*SSTable
-	sparsityFactor    uint32
-	threshold         uint32
-	falsePositiveRate float64
-	dataPath          string
-	wal               *WriteAheadLog
+	memtable memtable.MemTable
+	SStables []*SSTable
+	opts     sstableOptions
+	dataPath string
+	wal      *WriteAheadLog
 }
 
 func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float64) *LSM {
@@ -41,12 +39,14 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 	}
 
 	lsm := &LSM{
-		threshold:         threshold,
-		sparsityFactor:    sparsityFactor,
-		falsePositiveRate: falsePositiveRate,
-		memtable:          *memtable.NewMemTable(memtable.NewAVLTree()),
-		dataPath:          dataPath,
-		wal:               &WriteAheadLog{filepath.Join(dataPath, walFileName)},
+		opts: sstableOptions{
+			threshold:         threshold,
+			sparsityFactor:    sparsityFactor,
+			falsePositiveRate: falsePositiveRate,
+		},
+		memtable: *memtable.NewMemTable(memtable.NewAVLTree()),
+		dataPath: dataPath,
+		wal:      &WriteAheadLog{filepath.Join(dataPath, walFileName)},
 	}
 
 	if err := lsm.loadSSTables(dataPath); err != nil {
@@ -109,7 +109,7 @@ func (l *LSM) loadSSTables(dataPath string) error {
 	}
 
 	for _, path := range paths {
-		table, err := openSSTable(path, l.sparsityFactor, l.threshold, l.falsePositiveRate)
+		table, err := openSSTable(path, l.opts)
 		if err != nil {
 			return err
 		}
@@ -189,15 +189,15 @@ func (l *LSM) put(key interfaces.Comparable, payload []byte) error {
 
 	l.memtable.Put(key, payload)
 
-	if l.memtable.Size() < l.threshold {
+	if l.memtable.Size() < l.opts.threshold {
 		return nil
 	}
 
 	buf := new(bytes.Buffer)
 	sparseIndex := memtable.NewAVLTree()
-	bloomFilter := bloomfilter.NewBloomFilter(l.threshold, l.falsePositiveRate)
+	bloomFilter := bloomfilter.NewBloomFilter(l.opts.threshold, l.opts.falsePositiveRate)
 
-	err := l.memtable.Dump(buf, bloomFilter, sparseIndex, int32(l.sparsityFactor))
+	err := encodeSSTable(buf, l.memtable.ToKVs(), bloomFilter, sparseIndex, l.opts.sparsityFactor)
 	if err != nil {
 		return err
 	}
