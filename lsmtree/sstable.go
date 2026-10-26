@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"main/bloomfilter"
 	"main/interfaces"
@@ -51,6 +53,41 @@ func openSSTable(path string, opts sstableOptions) (*SSTable, error) {
 	return &SSTable{
 		dataLocation: path,
 		dataLength:   int(info.Size()),
+		sparseIndex:  sparseIndex,
+		bloomfilter:  bloomFilter,
+	}, nil
+}
+
+func writeSSTable(dataPath string, id uint64, mt *memtable.MemTable, opts sstableOptions) (*SSTable, error) {
+	buf := new(bytes.Buffer)
+	sparseIndex := memtable.NewAVLTree()
+	bloomFilter := bloomfilter.NewBloomFilter(opts.threshold, opts.falsePositiveRate)
+
+	if err := encodeSSTable(buf, mt.ToKVs(), bloomFilter, sparseIndex, opts.sparsityFactor); err != nil {
+		return nil, err
+	}
+
+	path := filepath.Join(dataPath, fileName(sstablePrefix, id))
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Println("Error creating file:", err)
+		return nil, err
+	}
+	defer f.Close()
+
+	fmt.Println("Writing SSTable to:", path)
+	if _, err = f.Write(buf.Bytes()); err != nil {
+		fmt.Println("Error writing file:", err)
+		return nil, err
+	}
+
+	if err := f.Sync(); err != nil {
+		return nil, err
+	}
+
+	return &SSTable{
+		dataLocation: path,
+		dataLength:   buf.Len(),
 		sparseIndex:  sparseIndex,
 		bloomfilter:  bloomFilter,
 	}, nil
