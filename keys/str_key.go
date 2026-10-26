@@ -52,13 +52,13 @@ func (s *StringKey) ToBytes() ([]byte, error) {
 func StringKeyFromBytes(buf io.Reader) (interfaces.Comparable, error) {
 	// 4 bytes for length
 	lenBytes := make([]byte, 4)
-	if n, err := buf.Read(lenBytes); err != nil || n != 4 {
+	if _, err := io.ReadFull(buf, lenBytes); err != nil {
 		return nil, errors.New("failed to read length bytes")
 	}
 	length := binary.BigEndian.Uint32(lenBytes)
 	// string bytes
 	strBytes := make([]byte, length)
-	if n, err := buf.Read(strBytes); err != nil || uint32(n) != length {
+	if _, err := io.ReadFull(buf, strBytes); err != nil {
 		return nil, errors.New("failed to read string bytes")
 	}
 	return NewStringKey(string(strBytes)), nil

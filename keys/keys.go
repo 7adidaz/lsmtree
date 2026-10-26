@@ -52,7 +52,7 @@ func (i *IntKey) ToBytes() ([]byte, error) {
 
 func IntKeyFromBytes(buf io.Reader) (interfaces.Comparable, error) {
 	intBytes := make([]byte, 4)
-	if n, err := buf.Read(intBytes); err != nil || n != 4 {
+	if _, err := io.ReadFull(buf, intBytes); err != nil {
 		return nil, fmt.Errorf("error parsing int32: %w", err)
 	}
 	return NewIntKey(binary.BigEndian.Uint32(intBytes)), nil
@@ -60,7 +60,7 @@ func IntKeyFromBytes(buf io.Reader) (interfaces.Comparable, error) {
 
 func ParseKey(buf io.Reader) (interfaces.Comparable, error) {
 	typeByte := make([]byte, 1)
-	if n, err := buf.Read(typeByte); err != nil || n != 1 {
+	if _, err := io.ReadFull(buf, typeByte); err != nil {
 		return nil, fmt.Errorf("error parsing key: %w", err)
 	}
 

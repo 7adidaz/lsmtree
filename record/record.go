@@ -45,7 +45,7 @@ func Parse(payload []byte) (*Record, error) {
 
 func ParseInt32(buf io.Reader) (uint32, error) {
 	intBytes := make([]byte, 4)
-	if n, err := buf.Read(intBytes); err != nil || n != 4 {
+	if _, err := io.ReadFull(buf, intBytes); err != nil {
 		return 0, fmt.Errorf("error parsing int32: %w", err)
 	}
 	return binary.BigEndian.Uint32(intBytes), nil
