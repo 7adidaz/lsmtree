@@ -11,7 +11,7 @@ import (
 	"main/record"
 )
 
-const walFileName = "WAL"
+const walPrefix = "WAL_"
 
 type WriteAheadLog struct {
 	dataLocation string
@@ -67,15 +67,4 @@ func (w *WriteAheadLog) Replay(mt *memtable.MemTable) error {
 
 		mt.Put(key, val)
 	}
-}
-
-type countingReader struct {
-	r io.Reader
-	n int64
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.n += int64(n)
-	return n, err
 }

@@ -1,23 +1,33 @@
 package lsmtree
 
 import (
+	"cmp"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	"fmt"
+	"log"
 	"main/interfaces"
-	"main/memtable"
 	"main/record"
 )
 
+const maxFrozen = 4
+
 type LSM struct {
-	memtable memtable.MemTable
-	SStables []*SSTable
-	opts     sstableOptions
-	nextID   uint64
+	mu   sync.RWMutex
+	opts sstableOptions
+
+	nextID      uint64
+	active      *loggedMemtable
+	frozen      []*loggedMemtable
+	flushCh     chan *loggedMemtable
+	flusherDone chan struct{}
+
 	dataPath string
-	wal      *WriteAheadLog
+	SStables []*SSTable
 }
 
 func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float64) *LSM {
@@ -38,17 +48,33 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 	}
 
 	lsm := &LSM{
+		mu: sync.RWMutex{},
 		opts: sstableOptions{
 			threshold:         threshold,
 			sparsityFactor:    sparsityFactor,
 			falsePositiveRate: falsePositiveRate,
 		},
-		memtable: *memtable.NewMemTable(memtable.NewAVLTree()),
+
+		frozen:      []*loggedMemtable{},
+		flushCh:     make(chan *loggedMemtable, maxFrozen),
+		flusherDone: make(chan struct{}),
+
 		dataPath: dataPath,
+		SStables: []*SSTable{},
 	}
 
-	if err := lsm.loadSSTables(dataPath); err != nil {
+	walIDs, err := lsm.loadLoggedMemtables(dataPath)
+	if err != nil {
 		panic(err)
+	}
+
+	if err := lsm.loadSSTables(dataPath, walIDs); err != nil {
+		panic(err)
+	}
+	for _, lm := range slices.Clone(lsm.frozen) {
+		if err := lsm.flush(lm); err != nil {
+			panic(err)
+		}
 	}
 
 	lsm.nextID, err = nextFreeID(dataPath)
@@ -56,26 +82,56 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 		panic(err)
 	}
 
-	lsm.wal, err = openWAL(filepath.Join(dataPath, walFileName))
+	lsm.active, err = lsm.nextLoggedMemtable()
 	if err != nil {
 		panic(err)
 	}
 
-	if err := lsm.wal.Replay(&lsm.memtable); err != nil {
-		panic(err)
-	}
-
+	go lsm.runFlusher()
 	return lsm
 }
 
-func (l *LSM) loadSSTables(dataPath string) error {
+func (l *LSM) loadLoggedMemtables(dataPath string) ([]uint64, error) {
+	paths, err := walFiles(dataPath)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uint64, 0, len(paths))
+	for _, path := range paths {
+		lm, err := openLoggedMemtable(path)
+		if err != nil {
+			return nil, err
+		}
+
+		if lm.memTable.Size() == 0 {
+			if err := lm.wal.Remove(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		fmt.Printf("Replayed WAL from %s\n", path)
+		l.frozen = append(l.frozen, lm)
+		ids = append(ids, lm.id)
+	}
+
+	return ids, nil
+}
+
+func (l *LSM) loadSSTables(dataPath string, skip []uint64) error {
 	paths, err := sstableFiles(dataPath)
 	if err != nil {
 		return err
 	}
 
 	for _, path := range paths {
-		table, err := openSSTable(path, l.opts)
+		id, _ := parseID(filepath.Base(path), sstablePrefix)
+		if slices.Contains(skip, id) {
+			continue
+		}
+
+		table, err := openSSTable(path, id, l.opts)
 		if err != nil {
 			return err
 		}
@@ -88,11 +144,22 @@ func (l *LSM) loadSSTables(dataPath string) error {
 }
 
 func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
-	if found, payload := l.memtable.Get(key); found {
+	l.mu.RLock()
+	if found, payload := l.active.memTable.Get(key); found {
+		l.mu.RUnlock()
 		return resolve(payload)
 	}
 
-	for _, table := range slices.Backward(l.SStables) {
+	for _, lm := range slices.Backward(l.frozen) {
+		if found, payload := lm.memTable.Get(key); found {
+			l.mu.RUnlock()
+			return resolve(payload)
+		}
+	}
+
+	SSTables := l.SStables
+	l.mu.RUnlock()
+	for _, table := range slices.Backward(SSTables) {
 		payload, err := table.Find(key)
 		if err != nil {
 			return false, nil, err
@@ -127,29 +194,83 @@ func (l *LSM) Delete(key interfaces.Comparable) error {
 }
 
 func (l *LSM) put(key interfaces.Comparable, payload []byte) error {
-	if err := l.wal.Append(key, payload); err != nil {
+	l.mu.Lock()
+	if err := l.active.wal.Append(key, payload); err != nil {
+		l.mu.Unlock()
 		return err
 	}
 
-	l.memtable.Put(key, payload)
-
-	if l.memtable.Size() < l.opts.threshold {
+	l.active.memTable.Put(key, payload)
+	if l.active.memTable.Size() < l.opts.threshold {
+		l.mu.Unlock()
 		return nil
 	}
 
-	table, err := writeSSTable(l.dataPath, l.nextID, &l.memtable, l.opts)
-	if err != nil {
-		return err
-	}
-	l.nextID++
-	l.memtable.Clear()
-
-	l.SStables = append(l.SStables, table)
-
-	err = os.Truncate(l.wal.dataLocation, 0)
+	frozen, err := l.freeze()
+	l.mu.Unlock()
 	if err != nil {
 		return err
 	}
 
+	l.flushCh <- frozen
 	return nil
+}
+
+func (l *LSM) freeze() (*loggedMemtable, error) {
+	next, err := l.nextLoggedMemtable()
+	if err != nil {
+		return nil, err
+	}
+
+	frozen := l.active
+	l.frozen = append(l.frozen, frozen)
+	l.active = next
+	return frozen, nil
+}
+
+func (l *LSM) nextLoggedMemtable() (*loggedMemtable, error) {
+	id := l.nextID
+	l.nextID++
+	return newLoggedMemtable(l.dataPath, id)
+}
+
+func (l *LSM) runFlusher() {
+	defer close(l.flusherDone)
+	for lm := range l.flushCh {
+		if err := l.flush(lm); err != nil {
+			log.Printf("lsmtree: flushing memtable %d: %v", lm.id, err)
+		}
+	}
+}
+
+func (l *LSM) flush(lm *loggedMemtable) error {
+	table, err := writeSSTable(l.dataPath, lm.id, lm.memTable, l.opts)
+	if err != nil {
+		return err
+	}
+
+	l.mu.Lock()
+	// insert it into the right position to maintain order
+	i, _ := slices.BinarySearchFunc(l.SStables, table.id, func(t *SSTable, id uint64) int {
+		return cmp.Compare(t.id, id)
+	})
+	l.SStables = slices.Insert(slices.Clip(l.SStables), i, table)
+	l.frozen = slices.DeleteFunc(l.frozen, func(other *loggedMemtable) bool { return other == lm })
+	l.mu.Unlock()
+
+	return lm.discard()
+}
+
+func (l *LSM) Close() error {
+	close(l.flushCh)
+	<-l.flusherDone
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	errs := []error{l.active.close()}
+	for _, lm := range l.frozen {
+		errs = append(errs, lm.close())
+	}
+	return errors.Join(errs...)
 }

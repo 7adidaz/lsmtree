@@ -17,6 +17,7 @@ import (
 )
 
 type SSTable struct {
+	id           uint64
 	dataLocation string
 	dataLength   int
 	sparseIndex  memtable.MemTableImplementation
@@ -31,7 +32,7 @@ type sstableOptions struct {
 
 // openSSTable streams an SSTable file once, rebuilding the bloom filter and
 // sparse index that were built when the file was written.
-func openSSTable(path string, opts sstableOptions) (*SSTable, error) {
+func openSSTable(path string, id uint64, opts sstableOptions) (*SSTable, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -51,6 +52,7 @@ func openSSTable(path string, opts sstableOptions) (*SSTable, error) {
 	}
 
 	return &SSTable{
+		id:           id,
 		dataLocation: path,
 		dataLength:   int(info.Size()),
 		sparseIndex:  sparseIndex,
@@ -86,6 +88,7 @@ func writeSSTable(dataPath string, id uint64, mt *memtable.MemTable, opts sstabl
 	}
 
 	return &SSTable{
+		id:           id,
 		dataLocation: path,
 		dataLength:   buf.Len(),
 		sparseIndex:  sparseIndex,

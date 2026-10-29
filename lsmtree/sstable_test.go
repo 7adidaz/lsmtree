@@ -23,7 +23,7 @@ func TestEncodeSSTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	//  key->type-value|value len|value|key->type-value|value len| data
+	//  key->type-value|value len|value|key->type-value|value len|data
 	//  (00)00000001   |00000001 |7f   |(00)00000002   |00000006 |76616c756532
 	bufExpectedVal := "0000000001000000017f00000000020000000676616c756532"
 	if hex.EncodeToString(buf.Bytes()) != bufExpectedVal {

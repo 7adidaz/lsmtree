@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"main/keys"
+	"main/record"
 	"math/rand"
 	"os"
 	"strconv"
@@ -213,6 +214,9 @@ func TestSSTablesSurviveRestart(t *testing.T) {
 			t.Fatalf("Put failed for key-%02d: %v", i, err)
 		}
 	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if len(first.SStables) == 0 {
 		t.Fatal("expected at least one SSTable to be flushed")
 	}
@@ -220,6 +224,7 @@ func TestSSTablesSurviveRestart(t *testing.T) {
 	persisted := len(first.SStables) * threshold
 
 	reopened := NewLSMTree(threshold, 2, 0.01)
+	defer reopened.Close()
 	if got, want := len(reopened.SStables), len(first.SStables); got != want {
 		t.Fatalf("reloaded %d SSTables, want %d", got, want)
 	}
@@ -290,6 +295,9 @@ func TestDeleteSurvivesFlushIntoOlderSSTable(t *testing.T) {
 		}
 	}
 
+	if err := lsm.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if len(lsm.SStables) < 2 {
 		t.Fatalf("expected the value and the tombstone in separate SSTables, got %d", len(lsm.SStables))
 	}
@@ -331,5 +339,78 @@ func TestArbitraryByteValuesRoundTrip(t *testing.T) {
 		if !bytes.Equal(got, want) {
 			t.Errorf("%s: got %v, want %v", name, got, want)
 		}
+	}
+}
+
+func TestRecoveredWritesDoNotShadowNewerSSTable(t *testing.T) {
+	chdirTemp(t)
+
+	const threshold = 5
+	k := keys.NewStringKey("k")
+
+	first := NewLSMTree(threshold, 1, 0.01)
+	if err := first.Put(k, []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second := NewLSMTree(threshold, 1, 0.01)
+	if len(second.frozen) != 0 {
+		t.Fatalf("recovered memtables were not flushed at startup: %d left", len(second.frozen))
+	}
+	if err := second.Put(k, []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	for i := range threshold - 1 {
+		if err := second.Put(keys.NewStringKey(fmt.Sprintf("f-%d", i)), []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, got, err := second.Get(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new" {
+		t.Errorf("got %q, want %q", got, "new")
+	}
+}
+
+func TestFlushOrderDoesNotChangeReadOrder(t *testing.T) {
+	chdirTemp(t)
+
+	lsm := NewLSMTree(100, 1, 0.01)
+	defer lsm.Close()
+	k := keys.NewStringKey("k")
+
+	older, err := lsm.nextLoggedMemtable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := lsm.nextLoggedMemtable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	older.memTable.Put(k, (&record.Record{Type: record.RecordValue, Value: []byte("old")}).ToBytes())
+	newer.memTable.Put(k, (&record.Record{Type: record.RecordValue, Value: []byte("new")}).ToBytes())
+
+	if err := lsm.flush(newer); err != nil {
+		t.Fatal(err)
+	}
+	if err := lsm.flush(older); err != nil {
+		t.Fatal(err)
+	}
+
+	_, got, err := lsm.Get(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new" {
+		t.Errorf("got %q, want %q", got, "new")
 	}
 }

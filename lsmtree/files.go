@@ -44,8 +44,10 @@ func nextFreeID(dataPath string) (uint64, error) {
 
 	var next uint64
 	for _, e := range entries {
-		if id, found := parseID(e.Name(), sstablePrefix); found && id >= next {
-			next = id + 1
+		for _, prefix := range []string{sstablePrefix, walPrefix} {
+			if id, found := parseID(e.Name(), prefix); found && id >= next {
+				next = id + 1
+			}
 		}
 	}
 
@@ -54,6 +56,10 @@ func nextFreeID(dataPath string) (uint64, error) {
 
 func sstableFiles(dataPath string) ([]string, error) {
 	return filesByID(dataPath, sstablePrefix)
+}
+
+func walFiles(dataPath string) ([]string, error) {
+	return filesByID(dataPath, walPrefix)
 }
 
 func filesByID(dataPath, prefix string) ([]string, error) {
