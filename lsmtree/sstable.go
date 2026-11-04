@@ -201,7 +201,7 @@ func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
 	// the smallest key in the table is always sampled, so a missing floor means
 	// the key sorts before every key in this SSTable.
 	floorBytes := t.sparseIndex.Floor(key)
-	if len(floorBytes) != 4 {
+	if floorBytes == nil {
 		return nil, nil
 	}
 	lowerBound, err := record.ParseInt32(bytes.NewReader(floorBytes))
@@ -209,11 +209,12 @@ func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
 		return nil, err
 	}
 
-	// no ceiling, or the key is itself a sampled offset: read to the end.
+	// no sampled key after this one: read to the end.
 	upperBound := uint32(t.dataLength)
-	if ceilBytes := t.sparseIndex.Ceil(key); len(ceilBytes) == 4 {
-		if bound, err := record.ParseInt32(bytes.NewReader(ceilBytes)); err == nil && bound > lowerBound {
-			upperBound = bound
+	if higherBytes := t.sparseIndex.Higher(key); higherBytes != nil {
+		upperBound, err = record.ParseInt32(bytes.NewReader(higherBytes))
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -231,8 +232,11 @@ func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
 			return nil, err
 		}
 
-		if key.Compare(parsedKey) == 0 {
+		switch key.Compare(parsedKey) {
+		case 0:
 			return payload, nil
+		case -1:
+			return nil, nil
 		}
 	}
 	return nil, nil

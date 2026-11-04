@@ -1,6 +1,7 @@
 package memtable
 
 import (
+	"bytes"
 	"main/keys"
 	"math"
 	"testing"
@@ -97,5 +98,30 @@ func TestComplexTree(t *testing.T) {
 
 	if len(avlTree.ToKVs()) != 0 {
 		t.Errorf("Tree should have 0 elements after clearning it")
+	}
+}
+
+func TestHigherSkipsExactMatch(t *testing.T) {
+	avlTree := new(AVLTree)
+	for _, key := range []uint32{10, 20, 30} {
+		avlTree.Put(keys.NewIntKey(key), []byte{byte(key)})
+	}
+
+	cases := []struct {
+		key  uint32
+		want []byte
+	}{
+		{5, []byte{10}},
+		{10, []byte{20}},
+		{15, []byte{20}},
+		{20, []byte{30}},
+		{30, nil},
+		{35, nil},
+	}
+	for _, c := range cases {
+		got := avlTree.Higher(keys.NewIntKey(c.key))
+		if !bytes.Equal(got, c.want) {
+			t.Errorf("Higher(%d) = %v, want %v", c.key, got, c.want)
+		}
 	}
 }

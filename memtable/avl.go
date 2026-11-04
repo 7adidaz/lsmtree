@@ -97,15 +97,13 @@ func (t *AVLTree) Floor(key interfaces.Comparable) []byte {
 	return nil
 }
 
-func (t *AVLTree) Ceil(key interfaces.Comparable) []byte {
+func (t *AVLTree) Higher(key interfaces.Comparable) []byte {
 	curr := t.head
 	var candidate *Node
 
 	for curr != nil {
 		compareResult := curr.key.Compare(key)
 		switch compareResult {
-		case 0:
-			return curr.data
 		case 1:
 			candidate = curr
 			curr = curr.left

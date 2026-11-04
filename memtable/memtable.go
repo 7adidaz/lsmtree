@@ -21,7 +21,7 @@ type MemTableImplementation interface {
 	Get(key interfaces.Comparable) (bool, []byte)
 	Put(key interfaces.Comparable, val []byte)
 	Floor(key interfaces.Comparable) []byte
-	Ceil(key interfaces.Comparable) []byte
+	Higher(key interfaces.Comparable) []byte
 	Clear()
 	Size() uint32
 	ToKVs() []*Entry
