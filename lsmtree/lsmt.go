@@ -30,21 +30,16 @@ type LSM struct {
 	SStables []*SSTable
 }
 
-func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float64) *LSM {
+func NewLSMTree(dataPath string, threshold uint32, sparsityFactor uint32, falsePositiveRate float64) (*LSM, error) {
 	if sparsityFactor == 0 {
-		panic("lsmtree: sparsityFactor must be >= 1 (1 = index every key)")
+		return nil, errors.New("lsmtree: sparsityFactor must be >= 1 (1 = index every key)")
 	}
 	if falsePositiveRate <= 0 || falsePositiveRate >= 1 {
-		panic("lsmtree: falsePositiveRate must be between 0 and 1 (exclusive)")
-	}
-
-	dataPath, err := DataPath()
-	if err != nil {
-		panic(err)
+		return nil, errors.New("lsmtree: falsePositiveRate must be between 0 and 1 (exclusive)")
 	}
 
 	if err := os.MkdirAll(dataPath, 0o755); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	lsm := &LSM{
@@ -63,32 +58,37 @@ func NewLSMTree(threshold uint32, sparsityFactor uint32, falsePositiveRate float
 		SStables: []*SSTable{},
 	}
 
-	walIDs, err := lsm.loadLoggedMemtables(dataPath)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := lsm.loadSSTables(dataPath, walIDs); err != nil {
-		panic(err)
-	}
-	for _, lm := range slices.Clone(lsm.frozen) {
-		if err := lsm.flush(lm); err != nil {
-			panic(err)
-		}
-	}
-
-	lsm.nextID, err = nextFreeID(dataPath)
-	if err != nil {
-		panic(err)
-	}
-
-	lsm.active, err = lsm.nextLoggedMemtable()
-	if err != nil {
-		panic(err)
+	if err := lsm.recover(); err != nil {
+		lsm.closeWALs()
+		return nil, err
 	}
 
 	go lsm.runFlusher()
-	return lsm
+	return lsm, nil
+}
+
+func (l *LSM) recover() error {
+	walIDs, err := l.loadLoggedMemtables(l.dataPath)
+	if err != nil {
+		return err
+	}
+
+	if err := l.loadSSTables(l.dataPath, walIDs); err != nil {
+		return err
+	}
+	for _, lm := range slices.Clone(l.frozen) {
+		if err := l.flush(lm); err != nil {
+			return err
+		}
+	}
+
+	l.nextID, err = nextFreeID(l.dataPath)
+	if err != nil {
+		return err
+	}
+
+	l.active, err = l.nextLoggedMemtable()
+	return err
 }
 
 func (l *LSM) loadLoggedMemtables(dataPath string) ([]uint64, error) {
@@ -268,7 +268,14 @@ func (l *LSM) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	errs := []error{l.active.close()}
+	return l.closeWALs()
+}
+
+func (l *LSM) closeWALs() error {
+	var errs []error
+	if l.active != nil {
+		errs = append(errs, l.active.close())
+	}
 	for _, lm := range l.frozen {
 		errs = append(errs, lm.close())
 	}

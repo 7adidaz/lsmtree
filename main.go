@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"log"
 	"main/interfaces"
 	"main/keys"
 	"main/lsmtree"
@@ -22,7 +23,14 @@ func main() {
 
 	r := gin.Default()
 
-	lsm := lsmtree.NewLSMTree(threshold, sparsityFactor, falsePositiveRate)
+	dataPath, err := lsmtree.DataPath()
+	if err != nil {
+		log.Fatal(err)
+	}
+	lsm, err := lsmtree.NewLSMTree(dataPath, threshold, sparsityFactor, falsePositiveRate)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Define a simple GET endpoint
 	r.GET("/ping", func(c *gin.Context) {

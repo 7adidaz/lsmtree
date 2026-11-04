@@ -6,16 +6,16 @@ import (
 	"main/keys"
 	"main/record"
 	"math/rand"
-	"os"
 	"strconv"
 	"testing"
 	"time"
 )
 
 func TestLSMTree(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
-	lsm := NewLSMTree(10, 2, 0.01)
+	lsm := openLSM(t, dir, 10, 2)
+	defer lsm.Close()
 	key := keys.NewStringKey("foo")
 	value := []byte("bar")
 	err := lsm.Put(key, value)
@@ -39,10 +39,11 @@ func TestLSMTree(t *testing.T) {
 }
 
 func TestMaintainTheLatestVersionOfKey(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	lsm := NewLSMTree(10, 10, 0.01)
+	lsm := openLSM(t, dir, 10, 10)
+	defer lsm.Close()
 	n := 50
 	latest_val := ""
 	for i := range n {
@@ -63,9 +64,10 @@ func TestMaintainTheLatestVersionOfKey(t *testing.T) {
 }
 
 func TestMaintainLatestVersionWithCompaction(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
-	lsm := NewLSMTree(10, 2, 0.01)
+	lsm := openLSM(t, dir, 10, 2)
+	defer lsm.Close()
 	testKey := keys.NewStringKey("test-key")
 	latestValue := ""
 	for i := range 100 {
@@ -92,9 +94,10 @@ func TestMaintainLatestVersionWithCompaction(t *testing.T) {
 }
 
 func TestLSMTreeBulkRandom(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
-	lsm := NewLSMTree(50, 3, 0.01)
+	lsm := openLSM(t, dir, 50, 3)
+	defer lsm.Close()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := 20000
 	keyToValue := make(map[int]string)
@@ -124,9 +127,10 @@ func TestLSMTreeBulkRandom(t *testing.T) {
 }
 
 func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
-	lsm := NewLSMTree(5, 3, 0.01)
+	lsm := openLSM(t, dir, 5, 3)
+	defer lsm.Close()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	n := 20
 	keyToValue := make(map[int]string)
@@ -176,9 +180,10 @@ func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
 }
 
 func BenchmarkLSMTreePutGet(b *testing.B) {
-	chdirTemp(b)
+	dir := b.TempDir()
 
-	lsm := NewLSMTree(1000, 10, 0.01)
+	lsm := openLSM(b, dir, 1000, 10)
+	defer lsm.Close()
 	n := 100000
 	for i := 0; i < n; i++ {
 		key := keys.NewIntKey(uint32(i))
@@ -202,12 +207,12 @@ func BenchmarkLSMTreePutGet(b *testing.B) {
 }
 
 func TestSSTablesSurviveRestart(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
 	const threshold = 10
 	const n = 40
 
-	first := NewLSMTree(threshold, 2, 0.01)
+	first := openLSM(t, dir, threshold, 2)
 	for i := range n {
 		k := keys.NewStringKey(fmt.Sprintf("key-%02d", i))
 		if err := first.Put(k, fmt.Appendf(nil, "value-%02d", i)); err != nil {
@@ -223,7 +228,7 @@ func TestSSTablesSurviveRestart(t *testing.T) {
 
 	persisted := len(first.SStables) * threshold
 
-	reopened := NewLSMTree(threshold, 2, 0.01)
+	reopened := openLSM(t, dir, threshold, 2)
 	defer reopened.Close()
 	if got, want := len(reopened.SStables), len(first.SStables); got != want {
 		t.Fatalf("reloaded %d SSTables, want %d", got, want)
@@ -251,30 +256,23 @@ func TestSSTablesSurviveRestart(t *testing.T) {
 	}
 }
 
-func chdirTemp(tb testing.TB) {
+func openLSM(tb testing.TB, dir string, threshold, sparsityFactor uint32) *LSM {
 	tb.Helper()
 
-	orig, err := os.Getwd()
+	lsm, err := NewLSMTree(dir, threshold, sparsityFactor, 0.01)
 	if err != nil {
 		tb.Fatal(err)
 	}
-	if err := os.Chdir(tb.TempDir()); err != nil {
-		tb.Fatal(err)
-	}
-	tb.Cleanup(func() {
-		if err := os.Chdir(orig); err != nil {
-			tb.Fatal(err)
-		}
-	})
+	return lsm
 }
 
 // The tombstone lands in a newer SSTable than the value, so Get has to stop at
 // the tombstone instead of falling through to the older table.
 func TestDeleteSurvivesFlushIntoOlderSSTable(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
 	const threshold = 10
-	lsm := NewLSMTree(threshold, 2, 0.01)
+	lsm := openLSM(t, dir, threshold, 2)
 	victim := keys.NewStringKey("victim")
 
 	if err := lsm.Put(victim, []byte("v1")); err != nil {
@@ -313,9 +311,10 @@ func TestDeleteSurvivesFlushIntoOlderSSTable(t *testing.T) {
 
 // A value of 0x7f used to be swallowed as a tombstone sentinel.
 func TestArbitraryByteValuesRoundTrip(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
-	lsm := NewLSMTree(10, 2, 0.01)
+	lsm := openLSM(t, dir, 10, 2)
+	defer lsm.Close()
 	cases := map[string][]byte{
 		"tombstone-byte": {0x7f},
 		"record-value":   {0x00},
@@ -343,12 +342,12 @@ func TestArbitraryByteValuesRoundTrip(t *testing.T) {
 }
 
 func TestRecoveredWritesDoNotShadowNewerSSTable(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
 	const threshold = 5
 	k := keys.NewStringKey("k")
 
-	first := NewLSMTree(threshold, 1, 0.01)
+	first := openLSM(t, dir, threshold, 1)
 	if err := first.Put(k, []byte("old")); err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +355,7 @@ func TestRecoveredWritesDoNotShadowNewerSSTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second := NewLSMTree(threshold, 1, 0.01)
+	second := openLSM(t, dir, threshold, 1)
 	if len(second.frozen) != 0 {
 		t.Fatalf("recovered memtables were not flushed at startup: %d left", len(second.frozen))
 	}
@@ -382,9 +381,9 @@ func TestRecoveredWritesDoNotShadowNewerSSTable(t *testing.T) {
 }
 
 func TestFlushOrderDoesNotChangeReadOrder(t *testing.T) {
-	chdirTemp(t)
+	dir := t.TempDir()
 
-	lsm := NewLSMTree(100, 1, 0.01)
+	lsm := openLSM(t, dir, 100, 1)
 	defer lsm.Close()
 	k := keys.NewStringKey("k")
 
@@ -412,5 +411,22 @@ func TestFlushOrderDoesNotChangeReadOrder(t *testing.T) {
 	}
 	if string(got) != "new" {
 		t.Errorf("got %q, want %q", got, "new")
+	}
+}
+
+func TestNewLSMTreeRejectsBadOptions(t *testing.T) {
+	cases := []struct {
+		name              string
+		sparsityFactor    uint32
+		falsePositiveRate float64
+	}{
+		{"zero sparsity", 0, 0.01},
+		{"zero false positive rate", 2, 0},
+		{"false positive rate of 1", 2, 1},
+	}
+	for _, c := range cases {
+		if _, err := NewLSMTree(t.TempDir(), 10, c.sparsityFactor, c.falsePositiveRate); err == nil {
+			t.Errorf("%s: expected an error", c.name)
+		}
 	}
 }
