@@ -93,3 +93,12 @@ func filesByID(dataPath, prefix string) ([]string, error) {
 
 	return paths, nil
 }
+
+func syncDir(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}

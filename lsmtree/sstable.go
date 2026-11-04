@@ -86,6 +86,9 @@ func writeSSTable(dataPath string, id uint64, mt *memtable.MemTable, opts sstabl
 	if err := f.Sync(); err != nil {
 		return nil, err
 	}
+	if err := syncDir(dataPath); err != nil {
+		return nil, err
+	}
 
 	return &SSTable{
 		id:           id,

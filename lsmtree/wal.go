@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 
 	"main/interfaces"
 	"main/memtable"
@@ -42,7 +43,10 @@ func (w *WriteAheadLog) Remove() error {
 	if err := w.file.Close(); err != nil {
 		return err
 	}
-	return os.Remove(w.dataLocation)
+	if err := os.Remove(w.dataLocation); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(w.dataLocation))
 }
 
 // Replay puts every record in the log back into mt, oldest first, and truncates
