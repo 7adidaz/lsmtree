@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"fmt"
 	"log"
@@ -14,7 +15,10 @@ import (
 	"main/record"
 )
 
-const maxFrozen = 4
+const (
+	maxFrozen       = 4
+	maxFlushRetries = 5
+)
 
 type LSM struct {
 	mu   sync.RWMutex
@@ -25,6 +29,7 @@ type LSM struct {
 	frozen      []*loggedMemtable
 	flushCh     chan *loggedMemtable
 	flusherDone chan struct{}
+	flushErr    error
 
 	dataPath string
 	SStables []*SSTable
@@ -53,6 +58,7 @@ func NewLSMTree(dataPath string, threshold uint32, sparsityFactor uint32, falseP
 		frozen:      []*loggedMemtable{},
 		flushCh:     make(chan *loggedMemtable, maxFrozen),
 		flusherDone: make(chan struct{}),
+		flushErr:    nil,
 
 		dataPath: dataPath,
 		SStables: []*SSTable{},
@@ -195,6 +201,12 @@ func (l *LSM) Delete(key interfaces.Comparable) error {
 
 func (l *LSM) put(key interfaces.Comparable, payload []byte) error {
 	l.mu.Lock()
+
+	if l.flushErr != nil {
+		l.mu.Unlock()
+		return l.flushErr
+	}
+
 	if err := l.active.wal.Append(key, payload); err != nil {
 		l.mu.Unlock()
 		return err
@@ -237,8 +249,23 @@ func (l *LSM) nextLoggedMemtable() (*loggedMemtable, error) {
 func (l *LSM) runFlusher() {
 	defer close(l.flusherDone)
 	for lm := range l.flushCh {
-		if err := l.flush(lm); err != nil {
-			log.Printf("lsmtree: flushing memtable %d: %v", lm.id, err)
+		attempt, delay := 0, 100*time.Millisecond
+		for {
+			err := l.flush(lm)
+			if err == nil {
+				break
+			}
+
+			log.Printf("lsmtree: flushing memtable %d (attempt %d): %v", lm.id, attempt+1, err)
+			if attempt == maxFlushRetries {
+				l.mu.Lock()
+				l.flushErr = fmt.Errorf("lsmtree: flushing memtable %d: %w", lm.id, err)
+				l.mu.Unlock()
+				break
+			}
+
+			time.Sleep(delay)
+			attempt, delay = attempt+1, delay*2
 		}
 	}
 }
