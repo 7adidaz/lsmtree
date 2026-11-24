@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 342" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <polygon points="0 0, 7 3, 0 6" fill="#1e293b"/>
+    </marker>
+    <marker id="arr-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <polygon points="0 0, 7 3, 0 6" fill="#c2410c"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="780" height="342" fill="#fdfdfb"/>
+
+  <!-- MEMORY band -->
+  <rect x="16" y="12" width="748" height="150" rx="10" fill="#f0f8f6" stroke="#0f766e" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+  <text x="742" y="32" text-anchor="end" font-family="ui-monospace, Menlo, monospace" font-size="11" letter-spacing="2" fill="#0f766e">MEMORY</text>
+
+  <!-- active memtable -->
+  <rect x="48" y="28" width="200" height="110" rx="8" fill="#e2f1ed" stroke="#0f766e" stroke-width="1.5"/>
+  <text x="60" y="54" font-size="13" font-weight="700" fill="#1e293b">Memtable</text>
+  <text x="60" y="72" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#0f766e">active</text>
+  <line x1="186" y1="50" x2="158" y2="80" stroke="#7fb5ac"/>
+  <line x1="186" y1="50" x2="214" y2="80" stroke="#7fb5ac"/>
+  <line x1="158" y1="80" x2="144" y2="110" stroke="#7fb5ac"/>
+  <line x1="158" y1="80" x2="172" y2="110" stroke="#7fb5ac"/>
+  <line x1="214" y1="80" x2="200" y2="110" stroke="#7fb5ac"/>
+  <line x1="214" y1="80" x2="228" y2="110" stroke="#7fb5ac"/>
+  <g fill="#f6fbfa" stroke="#0f766e">
+    <circle cx="186" cy="50" r="9"/>
+    <circle cx="158" cy="80" r="8"/><circle cx="214" cy="80" r="8"/>
+    <circle cx="144" cy="110" r="7"/><circle cx="172" cy="110" r="7"/>
+    <circle cx="200" cy="110" r="7"/><circle cx="228" cy="110" r="7"/>
+  </g>
+
+  <!-- when full arrow -->
+  <line x1="254" y1="83" x2="292" y2="83" stroke="#1e293b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="273" y="65" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="700" fill="#1e293b">when</text>
+  <text x="273" y="76" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="10" font-weight="700" fill="#1e293b">full</text>
+
+  <!-- frozen memtables (stacked) -->
+  <rect x="316" y="40" width="200" height="110" rx="8" fill="#eef7f5" stroke="#0f766e" stroke-opacity="0.45" stroke-dasharray="4 3"/>
+  <rect x="310" y="34" width="200" height="110" rx="8" fill="#eef7f5" stroke="#0f766e" stroke-opacity="0.6" stroke-dasharray="4 3"/>
+  <rect x="304" y="28" width="200" height="110" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="316" y="54" font-size="13" font-weight="700" fill="#1e293b">Frozen memtables</text>
+  <text x="316" y="72" font-family="ui-monospace, Menlo, monospace" font-size="11" fill="#0f766e">read-only</text>
+  <line x1="450" y1="50" x2="422" y2="80" stroke="#7fb5ac"/>
+  <line x1="450" y1="50" x2="478" y2="80" stroke="#7fb5ac"/>
+  <line x1="422" y1="80" x2="408" y2="110" stroke="#7fb5ac"/>
+  <line x1="422" y1="80" x2="436" y2="110" stroke="#7fb5ac"/>
+  <line x1="478" y1="80" x2="464" y2="110" stroke="#7fb5ac"/>
+  <line x1="478" y1="80" x2="492" y2="110" stroke="#7fb5ac"/>
+  <g fill="#f6fbfa" stroke="#0f766e">
+    <circle cx="450" cy="50" r="9"/>
+    <circle cx="422" cy="80" r="8"/><circle cx="478" cy="80" r="8"/>
+    <circle cx="408" cy="110" r="7"/><circle cx="436" cy="110" r="7"/>
+    <circle cx="464" cy="110" r="7"/><circle cx="492" cy="110" r="7"/>
+  </g>
+
+  <!-- saved in the background -->
+  <path d="M 522 90 C 630 110, 690 140, 674 202" fill="none" stroke="#c2410c" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr-red)"/>
+  <text x="636" y="86" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" font-weight="700" fill="#c2410c">saved in the</text>
+  <text x="636" y="100" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="11" font-weight="700" fill="#c2410c">background</text>
+
+  <!-- DISK band -->
+  <rect x="16" y="178" width="748" height="152" rx="10" fill="#fdf1ec" stroke="#c2410c" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+  <text x="742" y="198" text-anchor="end" font-family="ui-monospace, Menlo, monospace" font-size="11" letter-spacing="2" fill="#c2410c">DISK</text>
+
+  <!-- connectors -->
+  <line x1="148" y1="138" x2="148" y2="208" stroke="#94a3b8" stroke-dasharray="3 4"/>
+  <line x1="404" y1="150" x2="404" y2="208" stroke="#94a3b8" stroke-dasharray="3 4"/>
+
+  <!-- WAL -->
+  <rect x="48" y="208" width="200" height="92" rx="8" fill="#ffffff" stroke="#c2410c"/>
+  <text x="148" y="248" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">Write-ahead log</text>
+  <text x="148" y="268" text-anchor="middle" font-size="11" fill="#64748b">every write, logged first</text>
+
+  <!-- WALs stack -->
+  <rect x="316" y="220" width="200" height="92" rx="8" fill="#ffffff" stroke="#e5a68e"/>
+  <rect x="310" y="214" width="200" height="92" rx="8" fill="#ffffff" stroke="#d97757"/>
+  <rect x="304" y="208" width="200" height="92" rx="8" fill="#ffffff" stroke="#c2410c"/>
+  <text x="404" y="248" text-anchor="middle" font-size="14" font-weight="700" fill="#1e293b">WALs</text>
+  <text x="404" y="268" text-anchor="middle" font-size="11" fill="#64748b">kept until saved</text>
+
+  <!-- SSTables -->
+  <text x="548" y="204" font-size="15" font-weight="700" fill="#1e293b">SSTables</text>
+  <g font-family="ui-monospace, Menlo, monospace">
+    <rect x="548" y="212" width="176" height="30" rx="4" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+    <text x="558" y="231" font-size="12" fill="#1e293b">file 3</text>
+    <rect x="630" y="219" width="42" height="16" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-opacity="0.6"/>
+    <text x="651" y="230" text-anchor="middle" font-size="9" fill="#0f766e">bloom</text>
+    <rect x="676" y="219" width="42" height="16" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-opacity="0.6"/>
+    <text x="697" y="230" text-anchor="middle" font-size="9" fill="#0f766e">index</text>
+
+    <rect x="548" y="250" width="176" height="30" rx="4" fill="#ffffff" stroke="#64748b"/>
+    <text x="558" y="269" font-size="12" fill="#1e293b">file 2</text>
+    <rect x="630" y="257" width="42" height="16" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-opacity="0.6"/>
+    <text x="651" y="268" text-anchor="middle" font-size="9" fill="#0f766e">bloom</text>
+    <rect x="676" y="257" width="42" height="16" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-opacity="0.6"/>
+    <text x="697" y="268" text-anchor="middle" font-size="9" fill="#0f766e">index</text>
+
+    <rect x="548" y="288" width="176" height="30" rx="4" fill="#ffffff" stroke="#64748b"/>
+    <text x="558" y="307" font-size="12" fill="#1e293b">file 1</text>
+    <rect x="630" y="295" width="42" height="16" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-opacity="0.6"/>
+    <text x="651" y="306" text-anchor="middle" font-size="9" fill="#0f766e">bloom</text>
+    <rect x="676" y="295" width="42" height="16" rx="8" fill="#eaf5f2" stroke="#0f766e" stroke-opacity="0.6"/>
+    <text x="697" y="306" text-anchor="middle" font-size="9" fill="#0f766e">index</text>
+  </g>
+
+  <!-- newest -> oldest -->
+  <line x1="738" y1="216" x2="738" y2="310" stroke="#1e293b" marker-end="url(#arr)"/>
+  <text transform="rotate(90, 750, 263)" x="750" y="263" text-anchor="middle" font-family="ui-monospace, Menlo, monospace" font-size="9" fill="#475569">newest &#8594; oldest</text>
+</svg>
