@@ -34,8 +34,9 @@ func (s *StringKey) GetValue() any {
 	return s.value
 }
 
+// ToBytes encodes 1 type byte (0x01), 4 big-endian length bytes, then the
+// string bytes.
 func (s *StringKey) ToBytes() ([]byte, error) {
-	// 0x01 for string key type, then 4 bytes for length, then string bytes
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, uint8(0x01)); err != nil {
 		return nil, err
@@ -50,13 +51,11 @@ func (s *StringKey) ToBytes() ([]byte, error) {
 }
 
 func StringKeyFromBytes(buf io.Reader) (interfaces.Comparable, error) {
-	// 4 bytes for length
 	lenBytes := make([]byte, 4)
 	if _, err := io.ReadFull(buf, lenBytes); err != nil {
 		return nil, errors.New("failed to read length bytes")
 	}
 	length := binary.BigEndian.Uint32(lenBytes)
-	// string bytes
 	strBytes := make([]byte, length)
 	if _, err := io.ReadFull(buf, strBytes); err != nil {
 		return nil, errors.New("failed to read string bytes")
@@ -78,7 +77,7 @@ func (s *StringKey) Hash(numHashes uint32) ([]uint32, error) {
 	hash2 := h2.Sum32()
 
 	hashes := make([]uint32, numHashes)
-	for j := uint32(0); j < numHashes; j++ {
+	for j := range numHashes {
 		hashes[j] = hash1 + j*hash2
 	}
 	return hashes, nil

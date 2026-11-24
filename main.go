@@ -7,6 +7,7 @@ import (
 	"main/keys"
 	"main/lsmtree"
 	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,6 +22,11 @@ func main() {
 	println("Sparsity factor:", sparsityFactor)
 	println("False positive rate:", falsePositiveRate)
 
+	go func() {
+		log.Println("pprof listening on http://localhost:6060/debug/pprof/")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	r := gin.Default()
 
 	dataPath, err := lsmtree.DataPath()
@@ -32,9 +38,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Define a simple GET endpoint
 	r.GET("/ping", func(c *gin.Context) {
-		// Return JSON response
 		c.JSON(http.StatusOK, gin.H{
 			"message": "pong",
 		})
@@ -89,17 +93,10 @@ func main() {
 		c.String(http.StatusOK, "Key: "+key+" is deleted\n")
 	})
 
-	// Start server on port 8080 (default)
-	// Server will listen on 0.0.0.0:8080 (localhost:8080 on Windows)
 	r.Run()
 }
 
 func parseKey(key string) interfaces.Comparable {
 	var parsed_key interfaces.Comparable = keys.NewStringKey(key)
-	// num, err := strconv.Atoi(key)
-	// if err != nil {
-	// 	parsed_key = keys.NewIntKey(uint32(num))
-	// }
-
 	return parsed_key
 }

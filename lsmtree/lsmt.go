@@ -277,7 +277,7 @@ func (l *LSM) flush(lm *loggedMemtable) error {
 	}
 
 	l.mu.Lock()
-	// insert it into the right position to maintain order
+	// Insert by ID (flushes finish out of order); Clip keeps readers' snapshots intact.
 	i, _ := slices.BinarySearchFunc(l.SStables, table.id, func(t *SSTable, id uint64) int {
 		return cmp.Compare(t.id, id)
 	})

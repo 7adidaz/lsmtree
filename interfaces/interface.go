@@ -1,13 +1,11 @@
 package interfaces
 
 type Comparable interface {
-	// returns 0 if equal
-	// 1 if greater
-	// -1 if smaller
+	// Compare returns 0 if equal, 1 if the receiver is greater, -1 if smaller.
 	Compare(t Comparable) int8
 	GetValue() any
-	// first byte is numbering for different supported keys which i will document later
-	// for now i will only support uint32 which will be 0x00 in hex.
+	// ToBytes encodes the key prefixed with its type byte
+	// (0x00 IntKey, 0x01 StringKey); keys.ParseKey decodes it.
 	ToBytes() ([]byte, error)
-	Hash(numHashes uint32)([]uint32, error)
+	Hash(numHashes uint32) ([]uint32, error)
 }

@@ -179,31 +179,46 @@ func TestDeleteMultipleKeysAndCheckNil(t *testing.T) {
 	}
 }
 
-func BenchmarkLSMTreePutGet(b *testing.B) {
-	dir := b.TempDir()
-
-	lsm := openLSM(b, dir, 1000, 10)
+func BenchmarkLSMTreePut(b *testing.B) {
+	lsm := openLSM(b, b.TempDir(), 1000, 10)
 	defer lsm.Close()
-	n := 100000
-	for i := 0; i < n; i++ {
+
+	for i := 0; i < b.N; i++ {
+		key := keys.NewIntKey(uint32(i))
+		if err := lsm.Put(key, []byte("val_"+strconv.Itoa(i))); err != nil {
+			b.Fatalf("Put failed at %d: %v", i, err)
+		}
+	}
+}
+
+// A benchmark with sub-benchmarks runs its own body only once, so the fill
+// below happens once instead of once per b.N round. Every Put syncs the WAL,
+// so keep n small.
+func BenchmarkLSMTreeGet(b *testing.B) {
+	lsm := openLSM(b, b.TempDir(), 1000, 10)
+	defer lsm.Close()
+	n := 10000
+	for i := range n {
 		key := keys.NewIntKey(uint32(i))
 		value := []byte("val_" + strconv.Itoa(i))
 		if err := lsm.Put(key, value); err != nil {
 			b.Fatalf("Put failed at %d: %v", i, err)
 		}
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		idx := i % n
-		key := keys.NewIntKey(uint32(idx))
-		_, got, err := lsm.Get(key)
-		if err != nil {
-			b.Fatalf("Get failed for key %d: %v", idx, err)
+
+	b.Run(fmt.Sprintf("keys=%d", n), func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			idx := i % n
+			key := keys.NewIntKey(uint32(idx))
+			_, got, err := lsm.Get(key)
+			if err != nil {
+				b.Fatalf("Get failed for key %d: %v", idx, err)
+			}
+			if got == nil || string(got) != "val_"+strconv.Itoa(idx) {
+				b.Errorf("Expected value 'val_%d', got '%s'", idx, string(got))
+			}
 		}
-		if got == nil || string(got) != "val_"+strconv.Itoa(idx) {
-			b.Errorf("Expected value 'val_%d', got '%s'", idx, string(got))
-		}
-	}
+	})
 }
 
 func TestSSTablesSurviveRestart(t *testing.T) {

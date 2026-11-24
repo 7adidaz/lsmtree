@@ -35,11 +35,8 @@ func (i *IntKey) GetValue() any {
 	return i.value
 }
 
+// ToBytes encodes 1 type byte (0x00) followed by 4 big-endian value bytes.
 func (i *IntKey) ToBytes() ([]byte, error) {
-	/*
-	 * this functions outputs 5 bytes, first bye is for key type
-	 * and other 4 for the key.
-	 */
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, uint8(0x00)); err != nil {
 		return nil, err
@@ -98,7 +95,7 @@ func (i *IntKey) Hash(numHashes uint32) ([]uint32, error) {
 	hash2 := h2.Sum32()
 
 	hashes := make([]uint32, numHashes)
-	for j := uint32(0); j < numHashes; j++ {
+	for j := range numHashes {
 		hashes[j] = hash1 + j*hash2
 	}
 

@@ -1,12 +1,5 @@
 package memtable
 
-/*
- * This is a sorted in-memory data structure, When it gets
- * bigger than some threshold, it write it out to disk.
- *
- *  TODO: concurrency ... crowd goes: BOOOOO
- */
-
 import (
 	"main/interfaces"
 )
@@ -66,7 +59,6 @@ func (t *AVLTree) Get(key interfaces.Comparable) (bool, []byte) {
 }
 
 func (t *AVLTree) Put(key interfaces.Comparable, val []byte) {
-	// updated := new(bool)
 	updated := false
 	t.head = insert(t.head, key, val, &updated)
 	if !updated {
