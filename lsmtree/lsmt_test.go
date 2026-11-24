@@ -237,18 +237,18 @@ func TestSSTablesSurviveRestart(t *testing.T) {
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(first.SStables) == 0 {
+	if len(first.tables()) == 0 {
 		t.Fatal("expected at least one SSTable to be flushed")
 	}
 
-	persisted := len(first.SStables) * threshold
+	persisted := len(first.tables()) * threshold
 
 	reopened := openLSM(t, dir, threshold, 2)
 	defer reopened.Close()
-	if got, want := len(reopened.SStables), len(first.SStables); got != want {
+	if got, want := len(reopened.tables()), len(first.tables()); got != want {
 		t.Fatalf("reloaded %d SSTables, want %d", got, want)
 	}
-	for i, table := range reopened.SStables {
+	for i, table := range reopened.tables() {
 		if table.dataLength == 0 {
 			t.Errorf("SSTable %d reloaded with dataLength 0", i)
 		}
@@ -311,8 +311,8 @@ func TestDeleteSurvivesFlushIntoOlderSSTable(t *testing.T) {
 	if err := lsm.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(lsm.SStables) < 2 {
-		t.Fatalf("expected the value and the tombstone in separate SSTables, got %d", len(lsm.SStables))
+	if len(lsm.tables()) < 2 {
+		t.Fatalf("expected the value and the tombstone in separate SSTables, got %d", len(lsm.tables()))
 	}
 
 	found, got, err := lsm.Get(victim)

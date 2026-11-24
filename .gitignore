@@ -3,5 +3,7 @@ data/*
 .DS_Store
 # third-party engines cloned locally for the docs/comparisons series
 references/
+docs/
+.vscode/
 /infra
 lsm-tree

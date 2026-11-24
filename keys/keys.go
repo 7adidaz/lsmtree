@@ -80,19 +80,15 @@ func ParseKey(buf io.Reader) (interfaces.Comparable, error) {
 }
 
 func (i *IntKey) Hash(numHashes uint32) ([]uint32, error) {
-	h1 := fnv.New32a()
+	h := fnv.New64a()
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, i.value)
-	if _, err := h1.Write(buf); err != nil {
+	if _, err := h.Write(buf); err != nil {
 		return nil, err
 	}
-	hash1 := h1.Sum32()
-
-	h2 := fnv.New32()
-	if _, err := h2.Write(buf); err != nil {
-		return nil, err
-	}
-	hash2 := h2.Sum32()
+	sum := h.Sum64()
+	hash1 := uint32(sum >> 32)
+	hash2 := uint32(sum) | 1 // stride must be odd: 0 collapses all probes, even strides clash with even sizes
 
 	hashes := make([]uint32, numHashes)
 	for j := range numHashes {

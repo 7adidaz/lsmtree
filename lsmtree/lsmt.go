@@ -32,7 +32,7 @@ type LSM struct {
 	flushErr    error
 
 	dataPath string
-	SStables []*SSTable
+	sstables []*SSTable
 }
 
 func NewLSMTree(dataPath string, threshold uint32, sparsityFactor uint32, falsePositiveRate float64) (*LSM, error) {
@@ -61,7 +61,7 @@ func NewLSMTree(dataPath string, threshold uint32, sparsityFactor uint32, falseP
 		flushErr:    nil,
 
 		dataPath: dataPath,
-		SStables: []*SSTable{},
+		sstables: []*SSTable{},
 	}
 
 	if err := lsm.recover(); err != nil {
@@ -143,10 +143,18 @@ func (l *LSM) loadSSTables(dataPath string, skip []uint64) error {
 		}
 
 		fmt.Printf("Loaded SSTable from %s\n", path)
-		l.SStables = append(l.SStables, table)
+		l.sstables = append(l.sstables, table)
 	}
 
 	return nil
+}
+
+// tables snapshots the SSTable list; valid after unlock because
+// flush never mutates the slice in place.
+func (l *LSM) tables() []*SSTable {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.sstables
 }
 
 func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
@@ -163,9 +171,9 @@ func (l *LSM) Get(key interfaces.Comparable) (bool, []byte, error) {
 		}
 	}
 
-	SSTables := l.SStables
+	sstables := l.sstables
 	l.mu.RUnlock()
-	for _, table := range slices.Backward(SSTables) {
+	for _, table := range slices.Backward(sstables) {
 		payload, err := table.Find(key)
 		if err != nil {
 			return false, nil, err
@@ -278,10 +286,10 @@ func (l *LSM) flush(lm *loggedMemtable) error {
 
 	l.mu.Lock()
 	// Insert by ID (flushes finish out of order); Clip keeps readers' snapshots intact.
-	i, _ := slices.BinarySearchFunc(l.SStables, table.id, func(t *SSTable, id uint64) int {
+	i, _ := slices.BinarySearchFunc(l.sstables, table.id, func(t *SSTable, id uint64) int {
 		return cmp.Compare(t.id, id)
 	})
-	l.SStables = slices.Insert(slices.Clip(l.SStables), i, table)
+	l.sstables = slices.Insert(slices.Clip(l.sstables), i, table)
 	l.frozen = slices.DeleteFunc(l.frozen, func(other *loggedMemtable) bool { return other == lm })
 	l.mu.Unlock()
 

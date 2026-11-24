@@ -49,12 +49,12 @@ func main() {
 
 		parsed_key := parseKey(key)
 		found, value, err := lsm.Get(parsed_key)
-		if !found {
-			c.String(http.StatusNotFound, "key is not found")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to get the key")
 			return
 		}
-		if err != nil {
-			c.String(http.StatusTeapot, "Failed to get the key")
+		if !found {
+			c.String(http.StatusNotFound, "key is not found")
 			return
 		}
 		c.String(http.StatusOK, string(value))
