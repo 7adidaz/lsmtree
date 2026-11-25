@@ -25,8 +25,9 @@ func NewNode(key interfaces.Comparable, data []byte) *Node {
 }
 
 type AVLTree struct {
-	head *Node
-	size uint32
+	head  *Node
+	size  uint32
+	count int
 }
 
 func NewAVLTree() *AVLTree {
@@ -37,9 +38,14 @@ func (t *AVLTree) Size() uint32 {
 	return t.size
 }
 
+func (t *AVLTree) Len() int {
+	return t.count
+}
+
 func (t *AVLTree) Clear() {
 	t.head = nil
 	t.size = 0
+	t.count = 0
 }
 
 func (t *AVLTree) Get(key interfaces.Comparable) (bool, []byte) {
@@ -58,12 +64,19 @@ func (t *AVLTree) Get(key interfaces.Comparable) (bool, []byte) {
 	return false, nil
 }
 
+// Put inserts or overwrites a key. Overwrites mutate in place, so insert
+// reports the replaced value's length (-1 for a new key) to keep size right.
+// TODO: once writes carry sequence numbers, every Put becomes a new node that
+// shadows older versions, and oldValueLen goes away.
 func (t *AVLTree) Put(key interfaces.Comparable, val []byte) {
-	updated := false
-	t.head = insert(t.head, key, val, &updated)
-	if !updated {
-		t.size++
+	oldValueLen := -1
+	t.head = insert(t.head, key, val, &oldValueLen)
+	if oldValueLen >= 0 {
+		t.size = t.size - uint32(oldValueLen) + uint32(len(val))
+		return
 	}
+	t.size += uint32(key.Size() + len(val))
+	t.count++
 }
 
 func (t *AVLTree) Floor(key interfaces.Comparable) []byte {
@@ -188,16 +201,16 @@ func rightRotation(node *Node) *Node {
 	return b
 }
 
-func insert(node *Node, key interfaces.Comparable, data []byte, updated *bool) *Node {
+func insert(node *Node, key interfaces.Comparable, data []byte, oldValueLen *int) *Node {
 	if node == nil {
 		return NewNode(key, data)
 	} else if node.key.Compare(key) == -1 {
-		node.right = insert(node.right, key, data, updated)
+		node.right = insert(node.right, key, data, oldValueLen)
 	} else if node.key.Compare(key) == 1 {
-		node.left = insert(node.left, key, data, updated)
+		node.left = insert(node.left, key, data, oldValueLen)
 	} else {
+		*oldValueLen = len(node.data)
 		node.data = data
-		*updated = true
 		return node
 	}
 

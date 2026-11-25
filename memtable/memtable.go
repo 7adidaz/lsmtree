@@ -24,6 +24,7 @@ type MemTableImplementation interface {
 	Higher(key interfaces.Comparable) []byte
 	Clear()
 	Size() uint32
+	Len() int
 	ToKVs() []*Entry
 }
 
@@ -36,10 +37,11 @@ func (t *MemTable) Put(key interfaces.Comparable, val []byte) {
 }
 
 func (t *MemTable) Size() uint32 {
-	if t.tree == nil {
-		return 0
-	}
 	return t.tree.Size()
+}
+
+func (t *MemTable) Len() int {
+	return t.tree.Len()
 }
 
 func (t *MemTable) ToKVs() []*Entry {

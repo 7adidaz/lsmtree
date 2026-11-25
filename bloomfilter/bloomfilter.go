@@ -20,6 +20,10 @@ func NewBloomFilter(expectedItems uint32, falsePositiveRate float64) *BloomFilte
 	if falsePositiveRate <= 0.0 || falsePositiveRate >= 1.0 {
 		panic("falsePositiveRate must be between 0 and 1 (exclusive)")
 	}
+	// expectedItems 0 would make m 0 and k NaN.
+	if expectedItems == 0 {
+		expectedItems = 1
+	}
 
 	// m = -(n * ln(p)) / (ln(2)^2)
 	m := uint32(math.Ceil(-(float64(expectedItems) * math.Log(falsePositiveRate)) / (math.Ln2 * math.Ln2)))

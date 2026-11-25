@@ -21,9 +21,12 @@ func TestComplexTree(t *testing.T) {
 		avlTree.Put(keys.NewIntKey(key), []byte{byte(key)})
 	}
 
+	// Each entry is a 5-byte encoded IntKey plus a 1-byte value.
+	const entrySize = 6
+
 	// Check size after initial insertions
-	if avlTree.Size() != uint32(len(testKeys)) {
-		t.Errorf("Expected size %d after insertions, got %d", len(testKeys), avlTree.Size())
+	if avlTree.Size() != uint32(len(testKeys)*entrySize) {
+		t.Errorf("Expected size %d after insertions, got %d", len(testKeys)*entrySize, avlTree.Size())
 	}
 
 	// Verify tree structure is valid
@@ -57,7 +60,7 @@ func TestComplexTree(t *testing.T) {
 	}
 
 	// Check size after new insertions
-	expectedSize := uint32(len(testKeys) + len(newKeys))
+	expectedSize := uint32((len(testKeys) + len(newKeys)) * entrySize)
 	if avlTree.Size() != expectedSize {
 		t.Errorf("Expected size %d after new insertions, got %d",
 			expectedSize, avlTree.Size())
@@ -73,7 +76,7 @@ func TestComplexTree(t *testing.T) {
 		}
 	}
 
-	// Size should not change when updating existing keys
+	// Size should not change when updates keep the same value length
 	if avlTree.Size() != expectedSize {
 		t.Errorf("Expected size to remain %d after updates, got %d",
 			expectedSize, avlTree.Size())

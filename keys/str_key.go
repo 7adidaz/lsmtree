@@ -34,6 +34,10 @@ func (s *StringKey) GetValue() any {
 	return s.value
 }
 
+func (s *StringKey) Size() int {
+	return 5 + len(s.value)
+}
+
 // ToBytes encodes 1 type byte (0x01), 4 big-endian length bytes, then the
 // string bytes.
 func (s *StringKey) ToBytes() ([]byte, error) {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"testing"
 
-	"main/bloomfilter"
 	"main/keys"
 	"main/memtable"
 )
@@ -38,8 +37,8 @@ func TestScanSSTable(t *testing.T) {
 	}
 
 	index := memtable.NewAVLTree()
-	bloomFilter := bloomfilter.NewBloomFilter(10, 0.01)
-	if err := scanSSTable(bytes.NewReader(data), bloomFilter, index, 1); err != nil {
+	bloomFilter, err := scanSSTable(bytes.NewReader(data), index, 1, 0.01)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,7 +68,7 @@ func TestEncodeThenScanBuildSameIndex(t *testing.T) {
 	}
 
 	scanned := memtable.NewAVLTree()
-	if err := scanSSTable(bytes.NewReader(buf.Bytes()), nil, scanned, 3); err != nil {
+	if _, err := scanSSTable(bytes.NewReader(buf.Bytes()), scanned, 3, 0.01); err != nil {
 		t.Fatal(err)
 	}
 

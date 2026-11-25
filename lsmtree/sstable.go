@@ -25,7 +25,7 @@ type SSTable struct {
 }
 
 type sstableOptions struct {
-	threshold         uint32
+	maxMemtableBytes  uint32
 	sparsityFactor    uint32
 	falsePositiveRate float64
 }
@@ -45,9 +45,8 @@ func openSSTable(path string, id uint64, opts sstableOptions) (*SSTable, error) 
 	}
 
 	sparseIndex := memtable.NewAVLTree()
-	bloomFilter := bloomfilter.NewBloomFilter(opts.threshold, opts.falsePositiveRate)
-
-	if err := scanSSTable(bufio.NewReader(f), bloomFilter, sparseIndex, opts.sparsityFactor); err != nil {
+	bloomFilter, err := scanSSTable(bufio.NewReader(f), sparseIndex, opts.sparsityFactor, opts.falsePositiveRate)
+	if err != nil {
 		return nil, err
 	}
 
@@ -63,9 +62,10 @@ func openSSTable(path string, id uint64, opts sstableOptions) (*SSTable, error) 
 func writeSSTable(dataPath string, id uint64, mt *memtable.MemTable, opts sstableOptions) (*SSTable, error) {
 	buf := new(bytes.Buffer)
 	sparseIndex := memtable.NewAVLTree()
-	bloomFilter := bloomfilter.NewBloomFilter(opts.threshold, opts.falsePositiveRate)
+	entries := mt.ToKVs()
+	bloomFilter := bloomfilter.NewBloomFilter(uint32(len(entries)), opts.falsePositiveRate)
 
-	if err := encodeSSTable(buf, mt.ToKVs(), bloomFilter, sparseIndex, opts.sparsityFactor); err != nil {
+	if err := encodeSSTable(buf, entries, bloomFilter, sparseIndex, opts.sparsityFactor); err != nil {
 		return nil, err
 	}
 
@@ -132,31 +132,39 @@ func encodeSSTable(w io.Writer, entries []*memtable.Entry,
 	return err
 }
 
-// scanSSTable reads an SSTable written by encodeSSTable and fills bloomFilter and
-// index exactly as encodeSSTable did. The records themselves are not kept.
+// scanSSTable fills index exactly as encodeSSTable did and returns a bloom
+// filter over every key, sized from the real entry count after the scan.
+// TODO: building the filter here is ugly; goes away once it lives in the file.
 func scanSSTable(r io.Reader,
-	bloomFilter bloomfilter.BloomFilterImplementation,
 	index memtable.MemTableImplementation,
-	sampling uint32) error {
+	sampling uint32,
+	falsePositiveRate float64) (bloomfilter.BloomFilterImplementation, error) {
 
+	var tableKeys []interfaces.Comparable
 	cr := &countingReader{r: r}
 	for i := uint32(0); ; i++ {
 		start := cr.n
 		key, _, err := record.ReadEntry(cr)
 		if errors.Is(err, io.EOF) {
-			return nil
+			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		if bloomFilter != nil {
-			bloomFilter.Insert(key)
-		}
+		tableKeys = append(tableKeys, key)
 		if index != nil && sampling > 0 && i%sampling == 0 {
 			index.Put(key, offsetBytes(int(start)))
 		}
 	}
+
+	bloomFilter := bloomfilter.NewBloomFilter(uint32(len(tableKeys)), falsePositiveRate)
+	for _, key := range tableKeys {
+		if err := bloomFilter.Insert(key); err != nil {
+			return nil, err
+		}
+	}
+	return bloomFilter, nil
 }
 
 func offsetBytes(offset int) []byte {

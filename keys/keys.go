@@ -35,6 +35,10 @@ func (i *IntKey) GetValue() any {
 	return i.value
 }
 
+func (i *IntKey) Size() int {
+	return 5
+}
+
 // ToBytes encodes 1 type byte (0x00) followed by 4 big-endian value bytes.
 func (i *IntKey) ToBytes() ([]byte, error) {
 	buf := new(bytes.Buffer)

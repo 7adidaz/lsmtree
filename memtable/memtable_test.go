@@ -55,9 +55,10 @@ func TestMemTable(t *testing.T) {
 		t.Errorf("Expected %s, got %s", val3, result)
 	}
 
-	// Test size
-	if avl.size != 2 { // key1 and key2
-		t.Errorf("Expected size 2, got %d", avl.size)
+	// Test size: key1 (5-byte key + 14-byte "updated_value1") and
+	// key2 (5-byte key + 6-byte "value2")
+	if avl.size != 30 {
+		t.Errorf("Expected size 30, got %d", avl.size)
 	}
 
 }

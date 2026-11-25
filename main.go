@@ -13,12 +13,12 @@ import (
 )
 
 func main() {
-	var threshold uint32 = 50
+	var maxMemtableBytes uint32 = 64 << 10 // 64 KiB
 	var sparsityFactor uint32 = 2
 	var falsePositiveRate float64 = 0.1
 
 	println("Initializing LSM Tree with:")
-	println("Threshold:", threshold)
+	println("Max memtable bytes:", maxMemtableBytes)
 	println("Sparsity factor:", sparsityFactor)
 	println("False positive rate:", falsePositiveRate)
 
@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	lsm, err := lsmtree.NewLSMTree(dataPath, threshold, sparsityFactor, falsePositiveRate)
+	lsm, err := lsmtree.NewLSMTree(dataPath, maxMemtableBytes, sparsityFactor, falsePositiveRate)
 	if err != nil {
 		log.Fatal(err)
 	}

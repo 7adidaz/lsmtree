@@ -224,7 +224,11 @@ func BenchmarkLSMTreeGet(b *testing.B) {
 func TestSSTablesSurviveRestart(t *testing.T) {
 	dir := t.TempDir()
 
-	const threshold = 10
+	// Each entry is 19 bytes in the memtable: an 11-byte encoded StringKey
+	// ("key-NN") plus an 8-byte value ("value-NN").
+	const entrySize = 19
+	const entriesPerTable = 10
+	const threshold = entriesPerTable * entrySize
 	const n = 40
 
 	first := openLSM(t, dir, threshold, 2)
@@ -241,7 +245,7 @@ func TestSSTablesSurviveRestart(t *testing.T) {
 		t.Fatal("expected at least one SSTable to be flushed")
 	}
 
-	persisted := len(first.tables()) * threshold
+	persisted := len(first.tables()) * entriesPerTable
 
 	reopened := openLSM(t, dir, threshold, 2)
 	defer reopened.Close()

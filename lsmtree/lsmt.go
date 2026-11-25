@@ -35,7 +35,7 @@ type LSM struct {
 	sstables []*SSTable
 }
 
-func NewLSMTree(dataPath string, threshold uint32, sparsityFactor uint32, falsePositiveRate float64) (*LSM, error) {
+func NewLSMTree(dataPath string, maxMemtableBytes uint32, sparsityFactor uint32, falsePositiveRate float64) (*LSM, error) {
 	if sparsityFactor == 0 {
 		return nil, errors.New("lsmtree: sparsityFactor must be >= 1 (1 = index every key)")
 	}
@@ -50,7 +50,7 @@ func NewLSMTree(dataPath string, threshold uint32, sparsityFactor uint32, falseP
 	lsm := &LSM{
 		mu: sync.RWMutex{},
 		opts: sstableOptions{
-			threshold:         threshold,
+			maxMemtableBytes:  maxMemtableBytes,
 			sparsityFactor:    sparsityFactor,
 			falsePositiveRate: falsePositiveRate,
 		},
@@ -221,7 +221,7 @@ func (l *LSM) put(key interfaces.Comparable, payload []byte) error {
 	}
 
 	l.active.memTable.Put(key, payload)
-	if l.active.memTable.Size() < l.opts.threshold {
+	if l.active.memTable.Size() < l.opts.maxMemtableBytes {
 		l.mu.Unlock()
 		return nil
 	}

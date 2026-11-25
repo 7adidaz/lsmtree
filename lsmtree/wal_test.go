@@ -31,8 +31,8 @@ func TestWALAppendThenReplay(t *testing.T) {
 	if err := (&WriteAheadLog{dataLocation: path}).Replay(mt); err != nil {
 		t.Fatal(err)
 	}
-	if mt.Size() != 20 {
-		t.Fatalf("replayed %d records, want 20", mt.Size())
+	if got := mt.Len(); got != 20 {
+		t.Fatalf("replayed %d records, want 20", got)
 	}
 	found, got := mt.Get(keys.NewStringKey("key-07"))
 	if !found || !bytes.Equal(got, big) {
@@ -65,8 +65,8 @@ func TestWALReplayTruncatesTornTail(t *testing.T) {
 	if err := (&WriteAheadLog{dataLocation: path}).Replay(mt); err != nil {
 		t.Fatal(err)
 	}
-	if mt.Size() != 3 {
-		t.Errorf("replayed %d records, want 3", mt.Size())
+	if got := mt.Len(); got != 3 {
+		t.Errorf("replayed %d records, want 3", got)
 	}
 	if got := fileSize(t, path); got != complete {
 		t.Errorf("file is %d bytes after replay, want %d", got, complete)

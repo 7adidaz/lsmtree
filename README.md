@@ -25,7 +25,7 @@ This roadmap comes out of a source-level study of production LSM engines (goleve
 Ordered by dependency: earlier items unblock later ones.
 
 1. **Foundations**
-   - [ ] Byte-based memtable threshold (count bytes, not entries)
+   - [x] Byte-based memtable threshold (count bytes, not entries)
    - [ ] Skiplist memtable (replaces the AVL tree)
    - [ ] CRC checksums on WAL records and SSTable blocks
 2. **SSTable format**
