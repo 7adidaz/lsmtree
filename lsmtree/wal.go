@@ -2,7 +2,10 @@ package lsmtree
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,7 +31,11 @@ func openWAL(path string) (*WriteAheadLog, error) {
 }
 
 func (w *WriteAheadLog) Append(key interfaces.Comparable, val []byte) error {
-	if err := record.WriteEntry(w.file, key, val); err != nil {
+	buf := new(bytes.Buffer)
+	if err := record.WriteEntry(buf, key, val); err != nil {
+		return err
+	}
+	if err := writeRecord(w.file, buf.Bytes()); err != nil {
 		return err
 	}
 
@@ -49,8 +56,8 @@ func (w *WriteAheadLog) Remove() error {
 	return syncDir(filepath.Dir(w.dataLocation))
 }
 
-// Replay puts every record in the log back into mt, oldest first, and truncates
-// a torn record at the tail.
+// Replay puts every record back into mt, oldest first. A torn tail is
+// truncated; a checksum mismatch stops the replay.
 func (w *WriteAheadLog) Replay(mt *memtable.MemTable) error {
 	file, err := os.Open(w.dataLocation)
 	if err != nil {
@@ -61,14 +68,54 @@ func (w *WriteAheadLog) Replay(mt *memtable.MemTable) error {
 	r := &countingReader{r: bufio.NewReader(file)}
 	for {
 		good := r.n
-		key, val, err := record.ReadEntry(r)
+		payload, err := readRecord(r)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
-		if err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
 			return os.Truncate(w.dataLocation, good)
 		}
+		if err != nil {
+			return err
+		}
 
+		key, val, err := record.ReadEntry(bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
 		mt.Put(key, val)
 	}
+}
+
+var crcTable = crc32.MakeTable(crc32.Castagnoli)
+
+var errCorruptWAL = errors.New("lsmtree: wal record crc mismatch")
+
+func writeRecord(w io.Writer, payload []byte) error {
+	var header [8]byte
+	binary.BigEndian.PutUint32(header[0:4], crc32.Checksum(payload, crcTable))
+	binary.BigEndian.PutUint32(header[4:8], uint32(len(payload)))
+	if _, err := w.Write(header[:]); err != nil {
+		return err
+	}
+	_, err := w.Write(payload)
+	return err
+}
+
+func readRecord(r io.Reader) ([]byte, error) {
+	header := make([]byte, 8)
+	if _, err := io.ReadFull(r, header); err != nil {
+		return nil, err
+	}
+	want := binary.BigEndian.Uint32(header[0:4])
+	length := binary.BigEndian.Uint32(header[4:8])
+
+	payload := make([]byte, length)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return nil, err
+	}
+	if crc32.Checksum(payload, crcTable) != want {
+		return nil, errCorruptWAL
+	}
+	return payload, nil
 }

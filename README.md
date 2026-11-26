@@ -30,7 +30,9 @@ Ordered by dependency: earlier items unblock later ones.
      - [x] Single-threaded skiplist behind `MemTableImplementation` (Pugh's insert, p=1/4)
      - [ ] Arena-backed nodes (one allocation, exact accounting)
      - concurrent access lives in §6, not here
-   - [ ] CRC checksums on WAL records and SSTable blocks (independent, can be done any time)
+   - **CRC checksums** (CRC32C, verify on read)
+     - [x] WAL records
+     - [ ] SSTable blocks
 2. **SSTable format**
    - [ ] Serialize the bloom filter and sparse index (`ToBytes`/`FromBytes`)
    - [ ] Footer pointing at filter + index blocks; open reads footer instead of scanning
