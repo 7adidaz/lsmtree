@@ -21,7 +21,7 @@ func newLoggedMemtable(dataPath string, id uint64) (*loggedMemtable, error) {
 	return &loggedMemtable{
 		id:       id,
 		wal:      wal,
-		memTable: memtable.NewMemTable(memtable.NewAVLTree()),
+		memTable: memtable.NewMemTable(memtable.NewSkipList()),
 	}, nil
 }
 
@@ -35,7 +35,7 @@ func openLoggedMemtable(path string) (*loggedMemtable, error) {
 	lm := &loggedMemtable{
 		id:       id,
 		wal:      wal,
-		memTable: memtable.NewMemTable(memtable.NewAVLTree()),
+		memTable: memtable.NewMemTable(memtable.NewSkipList()),
 	}
 
 	if err := lm.wal.Replay(lm.memTable); err != nil {

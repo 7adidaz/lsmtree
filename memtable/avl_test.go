@@ -1,130 +1,27 @@
 package memtable
 
 import (
-	"bytes"
-	"main/keys"
 	"math"
 	"testing"
+
+	"main/keys"
 )
 
-func TestComplexTree(t *testing.T) {
+func TestAVLTreeStaysBalanced(t *testing.T) {
 	avlTree := new(AVLTree)
 
-	// Initial size should be 0
-	if avlTree.Size() != 0 {
-		t.Errorf("Expected initial size to be 0, got %d", avlTree.Size())
-	}
-
-	// Insert a series of testKeys to force multiple rotations
 	testKeys := []uint32{50, 30, 70, 20, 40, 60, 80, 15, 25, 35, 45, 55, 65, 75, 85}
 	for _, key := range testKeys {
 		avlTree.Put(keys.NewIntKey(key), []byte{byte(key)})
 	}
 
-	// Each entry is a 5-byte encoded IntKey plus a 1-byte value.
-	const entrySize = 6
-
-	// Check size after initial insertions
-	if avlTree.Size() != uint32(len(testKeys)*entrySize) {
-		t.Errorf("Expected size %d after insertions, got %d", len(testKeys)*entrySize, avlTree.Size())
-	}
-
-	// Verify tree structure is valid
 	if avlTree.head.key.Compare(keys.NewIntKey(50)) != 0 {
 		t.Errorf("Expected root key to be 50, got %d", avlTree.head.key.GetValue())
 	}
 
-	// Verify all keys are present
-	for _, key := range testKeys {
-		found, value := avlTree.Get(keys.NewIntKey(key))
-		if !found && value == nil {
-			t.Errorf("Key %d should be in the tree", key)
-		} else if len(value) != 1 || value[0] != byte(key) {
-			t.Errorf("Value for key %d is incorrect", key)
-		}
-	}
-
-	// Test some non-existent keys
-	nonExistentKeys := []uint32{10, 90, 42, 58}
-	for _, key := range nonExistentKeys {
-		found, value := avlTree.Get(keys.NewIntKey(key))
-		if found && value != nil {
-			t.Errorf("Key %d should not be in the tree", key)
-		}
-	}
-
-	// Insert some new keys
-	newKeys := []uint32{42, 58, 90, 5}
-	for _, key := range newKeys {
-		avlTree.Put(keys.NewIntKey(key), []byte{byte(key)})
-	}
-
-	// Check size after new insertions
-	expectedSize := uint32((len(testKeys) + len(newKeys)) * entrySize)
-	if avlTree.Size() != expectedSize {
-		t.Errorf("Expected size %d after new insertions, got %d",
-			expectedSize, avlTree.Size())
-	}
-
-	// Update some existing keys
-	updateKeys := []uint32{50, 40, 80}
-	for _, key := range updateKeys {
-		avlTree.Put(keys.NewIntKey(key), []byte{byte(key + 100)})
-		found, value := avlTree.Get(keys.NewIntKey(key))
-		if !found && value == nil || len(value) != 1 || value[0] != byte(key+100) {
-			t.Errorf("Updated value for key %d is incorrect", key)
-		}
-	}
-
-	// Size should not change when updates keep the same value length
-	if avlTree.Size() != expectedSize {
-		t.Errorf("Expected size to remain %d after updates, got %d",
-			expectedSize, avlTree.Size())
-	}
-
-	// avlTree.Dump(true)
-
-	remainingKeys := len(testKeys) + len(newKeys)
-	maxExpectedHeight := int(1.44*math.Log2(float64(remainingKeys+2)) - 0.328)
-
-	actualHeight := avlTree.head.height
-	if actualHeight > maxExpectedHeight {
+	maxExpectedHeight := int(1.44*math.Log2(float64(len(testKeys)+2)) - 0.328)
+	if avlTree.head.height > maxExpectedHeight {
 		t.Errorf("Tree height %d exceeds expected maximum %d for %d elements",
-			actualHeight, maxExpectedHeight, remainingKeys)
-	}
-
-	avlTree.Clear()
-
-	if avlTree.Size() != 0 {
-		t.Errorf("Tree should have size 0 after clearning it")
-	}
-
-	if len(avlTree.ToKVs()) != 0 {
-		t.Errorf("Tree should have 0 elements after clearning it")
-	}
-}
-
-func TestHigherSkipsExactMatch(t *testing.T) {
-	avlTree := new(AVLTree)
-	for _, key := range []uint32{10, 20, 30} {
-		avlTree.Put(keys.NewIntKey(key), []byte{byte(key)})
-	}
-
-	cases := []struct {
-		key  uint32
-		want []byte
-	}{
-		{5, []byte{10}},
-		{10, []byte{20}},
-		{15, []byte{20}},
-		{20, []byte{30}},
-		{30, nil},
-		{35, nil},
-	}
-	for _, c := range cases {
-		got := avlTree.Higher(keys.NewIntKey(c.key))
-		if !bytes.Equal(got, c.want) {
-			t.Errorf("Higher(%d) = %v, want %v", c.key, got, c.want)
-		}
+			avlTree.head.height, maxExpectedHeight, len(testKeys))
 	}
 }

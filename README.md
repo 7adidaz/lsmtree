@@ -26,10 +26,14 @@ Ordered by dependency: earlier items unblock later ones.
 
 1. **Foundations**
    - [x] Byte-based memtable threshold (count bytes, not entries)
-   - [ ] Skiplist memtable (replaces the AVL tree)
-   - [ ] CRC checksums on WAL records and SSTable blocks
+   - **Skiplist memtable** (replaces the AVL tree)
+     - [x] Single-threaded skiplist behind `MemTableImplementation` (Pugh's insert, p=1/4)
+     - [ ] Arena-backed nodes (one allocation, exact accounting)
+     - concurrent access lives in §6, not here
+   - [ ] CRC checksums on WAL records and SSTable blocks (independent, can be done any time)
 2. **SSTable format**
-   - [ ] Index + bloom filter stored in the file footer
+   - [ ] Serialize the bloom filter and sparse index (`ToBytes`/`FromBytes`)
+   - [ ] Footer pointing at filter + index blocks; open reads footer instead of scanning
    - [ ] Keep SSTables open (persistent reader per table)
 3. **Read path**
    - [ ] Iterator stack: per-block → per-table → merging iterator
@@ -41,7 +45,10 @@ Ordered by dependency: earlier items unblock later ones.
    - [ ] Measure write/space amplification
    - [ ] Crash-injection tests
 5. **MVCC**
-   - [ ] Sequence numbers + atomic batches as the WAL unit
+   - [ ] Sequence numbers in the internal key (overwrite becomes insert, drops `oldValueLen` in the memtable)
+   - [ ] Atomic batches as the WAL unit
    - [ ] Snapshots + snapshot-pinned scans
-6. **Concurrency**
-   - [ ] Group commit (fsync out from under the mutex)
+6. **Concurrency** (one package, starts after §5)
+   - [ ] Group commit: writer queue with a leader, fsync out from under the mutex
+   - [ ] Lock-free memtable readers (single writer, atomic pointer publication)
+   - [ ] Concurrent memtable writers (CAS skiplist + published-seqnum watermark)
