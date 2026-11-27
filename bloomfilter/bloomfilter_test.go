@@ -22,20 +22,15 @@ func TestBasic(t *testing.T) {
 
 	arr := []uint32{27, 18, 11, 8, 44, 29, 5, 90, 58, 53}
 	for _, i := range arr {
-		err := bf.Insert(keys.NewIntKey(i))
-		if err != nil {
-			t.Errorf("Error inserting element %d", i)
-		}
+		bf.Insert(keys.NewIntKey(i))
 	}
 
 	for _, i := range arr {
-		val, er := bf.Contains(keys.NewIntKey(i))
-		if !val || er != nil {
+		if !bf.Contains(keys.NewIntKey(i)) {
 			t.Errorf("error getting inserted element %d", i)
 		}
 	}
-	val, er := bf.Contains(keys.NewIntKey(15))
-	if val || er != nil {
+	if bf.Contains(keys.NewIntKey(15)) {
 		t.Errorf("Error getting non inserted element %d", 15)
 	}
 }
@@ -51,9 +46,7 @@ func TestProbability(t *testing.T) {
 		n := randomUint32()
 		if _, exists := inserted[n]; !exists {
 			inserted[n] = struct{}{}
-			if err := bf.Insert(keys.NewIntKey(n)); err != nil {
-				t.Fatalf("insert failed: %v", err)
-			}
+			bf.Insert(keys.NewIntKey(n))
 		}
 	}
 
@@ -66,8 +59,7 @@ func TestProbability(t *testing.T) {
 
 	falsePositives := 0
 	for n := range nonInserted {
-		found, _ := bf.Contains(keys.NewIntKey(n))
-		if found {
+		if bf.Contains(keys.NewIntKey(n)) {
 			falsePositives++
 		}
 	}

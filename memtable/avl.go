@@ -123,25 +123,6 @@ func (t *AVLTree) Higher(key interfaces.Comparable) []byte {
 	return nil
 }
 
-func (t *AVLTree) Dump(log bool) []*Node {
-	var arr []*Node
-	inOrderTraversal(t.head, &arr)
-
-	println(len(arr))
-	if log {
-		for i, node := range arr {
-			println(
-				"Node", i, ": K=", node.key.GetValue(),
-				", D=", string(node.data),
-				", H=", node.height,
-				", BF=", getBalanceFactor(node),
-			)
-		}
-	}
-
-	return arr
-}
-
 func (t *AVLTree) ToKVs() []*Entry {
 	var arr []*Node
 	inOrderTraversal(t.head, &arr)

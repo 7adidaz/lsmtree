@@ -45,7 +45,7 @@ func TestScanSSTable(t *testing.T) {
 	// the first record is 10 bytes, so key 2 starts at offset 10
 	for key, want := range map[uint32]uint32{1: 0, 2: 10} {
 		k := keys.NewIntKey(key)
-		if found, _ := bloomFilter.Contains(k); !found {
+		if !bloomFilter.Contains(k) {
 			t.Errorf("bloom filter is missing key %d", key)
 		}
 		found, got := index.Get(k)

@@ -16,7 +16,7 @@ func TestAVLTreeStaysBalanced(t *testing.T) {
 	}
 
 	if avlTree.head.key.Compare(keys.NewIntKey(50)) != 0 {
-		t.Errorf("Expected root key to be 50, got %d", avlTree.head.key.GetValue())
+		t.Errorf("Expected root key to be 50")
 	}
 
 	maxExpectedHeight := int(1.44*math.Log2(float64(len(testKeys)+2)) - 0.328)

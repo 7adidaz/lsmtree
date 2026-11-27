@@ -1,7 +1,6 @@
 package keys
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
@@ -31,24 +30,16 @@ func (i *IntKey) Compare(other interfaces.Comparable) int8 {
 	return 0
 }
 
-func (i *IntKey) GetValue() any {
-	return i.value
-}
-
 func (i *IntKey) Size() int {
 	return 5
 }
 
 // ToBytes encodes 1 type byte (0x00) followed by 4 big-endian value bytes.
-func (i *IntKey) ToBytes() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	if err := binary.Write(buf, binary.BigEndian, uint8(0x00)); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(buf, binary.BigEndian, i.value); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+func (i *IntKey) ToBytes() []byte {
+	b := make([]byte, 5)
+	b[0] = 0x00
+	binary.BigEndian.PutUint32(b[1:], i.value)
+	return b
 }
 
 func IntKeyFromBytes(buf io.Reader) (interfaces.Comparable, error) {
@@ -83,21 +74,19 @@ func ParseKey(buf io.Reader) (interfaces.Comparable, error) {
 	}
 }
 
-func (i *IntKey) Hash(numHashes uint32) ([]uint32, error) {
+func (i *IntKey) Hash(numHashes uint32) []uint32 {
 	h := fnv.New64a()
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, i.value)
-	if _, err := h.Write(buf); err != nil {
-		return nil, err
-	}
+	h.Write(buf)
 	sum := h.Sum64()
 	hash1 := uint32(sum >> 32)
-	hash2 := uint32(sum) | 1 // stride must be odd: 0 collapses all probes, even strides clash with even sizes
+	hash2 := uint32(sum) | 1
 
 	hashes := make([]uint32, numHashes)
 	for j := range numHashes {
 		hashes[j] = hash1 + j*hash2
 	}
 
-	return hashes, nil
+	return hashes
 }

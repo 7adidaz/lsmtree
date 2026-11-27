@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,6 +27,27 @@ type sstableOptions struct {
 	maxMemtableBytes  uint32
 	sparsityFactor    uint32
 	falsePositiveRate float64
+}
+
+type blockHandle struct {
+	// key is build-time only; not serialized.
+	key   interfaces.Comparable
+	start int
+	size  int
+}
+
+func (h *blockHandle) toBytes() []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint32(b[0:4], uint32(h.start))
+	binary.BigEndian.PutUint32(b[4:8], uint32(h.size))
+	return b
+}
+
+func blockHandleFromBytes(b []byte) blockHandle {
+	return blockHandle{
+		start: int(binary.BigEndian.Uint32(b[0:4])),
+		size:  int(binary.BigEndian.Uint32(b[4:8])),
+	}
 }
 
 // openSSTable streams an SSTable file once, rebuilding the bloom filter and
@@ -72,14 +92,11 @@ func writeSSTable(dataPath string, id uint64, mt *memtable.MemTable, opts sstabl
 	path := filepath.Join(dataPath, fileName(sstablePrefix, id))
 	f, err := os.Create(path)
 	if err != nil {
-		fmt.Println("Error creating file:", err)
 		return nil, err
 	}
 	defer f.Close()
 
-	fmt.Println("Writing SSTable to:", path)
 	if _, err = f.Write(buf.Bytes()); err != nil {
-		fmt.Println("Error writing file:", err)
 		return nil, err
 	}
 
@@ -107,29 +124,44 @@ func writeSSTable(dataPath string, id uint64, mt *memtable.MemTable, opts sstabl
 //	  [4 bytes] - Payload length
 //	  [N bytes] - Payload
 //
-// Every key goes into bloomFilter, and every sampling-th key goes into index
-// with its byte offset. Either may be nil.
+// Every key goes into bloomFilter, and every sampling-th key starts a block,
+// indexed by its handle. Either may be nil.
 func encodeSSTable(w io.Writer, entries []*memtable.Entry,
 	bloomFilter bloomfilter.BloomFilterImplementation,
 	index memtable.MemTableImplementation,
 	sampling uint32) error {
 
 	buf := new(bytes.Buffer)
+	var blocks []blockHandle
 	for i, entry := range entries {
 		if bloomFilter != nil {
 			bloomFilter.Insert(entry.Key)
 		}
 		if index != nil && sampling > 0 && uint32(i)%sampling == 0 {
-			index.Put(entry.Key, offsetBytes(buf.Len()))
+			blocks = append(blocks, blockHandle{key: entry.Key, start: buf.Len()})
 		}
 
 		if err := record.WriteEntry(buf, entry.Key, entry.Value); err != nil {
 			return err
 		}
 	}
+	indexBlocks(index, blocks, buf.Len())
 
 	_, err := w.Write(buf.Bytes())
 	return err
+}
+
+// indexBlocks fills in each block's length (known once the next block starts)
+// and puts the finished handles into the index.
+func indexBlocks(index memtable.MemTableImplementation, blocks []blockHandle, total int) {
+	for i := range blocks {
+		end := total
+		if i+1 < len(blocks) {
+			end = blocks[i+1].start
+		}
+		blocks[i].size = end - blocks[i].start
+		index.Put(blocks[i].key, blocks[i].toBytes())
+	}
 }
 
 // scanSSTable fills index exactly as encodeSSTable did and returns a bloom
@@ -141,6 +173,7 @@ func scanSSTable(r io.Reader,
 	falsePositiveRate float64) (bloomfilter.BloomFilterImplementation, error) {
 
 	var tableKeys []interfaces.Comparable
+	var blocks []blockHandle
 	cr := &countingReader{r: r}
 	for i := uint32(0); ; i++ {
 		start := cr.n
@@ -154,40 +187,27 @@ func scanSSTable(r io.Reader,
 
 		tableKeys = append(tableKeys, key)
 		if index != nil && sampling > 0 && i%sampling == 0 {
-			index.Put(key, offsetBytes(int(start)))
+			blocks = append(blocks, blockHandle{key: key, start: int(start)})
 		}
 	}
+	indexBlocks(index, blocks, int(cr.n))
 
 	bloomFilter := bloomfilter.NewBloomFilter(uint32(len(tableKeys)), falsePositiveRate)
 	for _, key := range tableKeys {
-		if err := bloomFilter.Insert(key); err != nil {
-			return nil, err
-		}
+		bloomFilter.Insert(key)
 	}
 	return bloomFilter, nil
 }
 
-func offsetBytes(offset int) []byte {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(offset))
-	return b
-}
-
-func (t *SSTable) readSSTableData(lowerBound uint32, upperBound uint32) (*bytes.Reader, error) {
-	buffer := make([]byte, upperBound-lowerBound)
+func (t *SSTable) readBlock(h blockHandle) (*bytes.Reader, error) {
+	buffer := make([]byte, h.size)
 	f, err := os.Open(t.dataLocation)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	_, err = f.Seek(int64(lowerBound), io.SeekStart)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = f.Read(buffer)
-	if err != nil {
+	if _, err := f.ReadAt(buffer, int64(h.start)); err != nil {
 		return nil, err
 	}
 
@@ -198,11 +218,7 @@ func (t *SSTable) readSSTableData(lowerBound uint32, upperBound uint32) (*bytes.
 // about the key and the caller should look in older tables. A tombstone is an
 // answer, so it comes back as a payload; decoding it is LSM.Get's job.
 func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
-	found, err := t.bloomfilter.Contains(key)
-	if err != nil {
-		return nil, err
-	}
-	if !found {
+	if !t.bloomfilter.Contains(key) {
 		return nil, nil
 	}
 
@@ -212,21 +228,8 @@ func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
 	if floorBytes == nil {
 		return nil, nil
 	}
-	lowerBound, err := record.ParseInt32(bytes.NewReader(floorBytes))
-	if err != nil {
-		return nil, err
-	}
 
-	// no sampled key after this one: read to the end.
-	upperBound := uint32(t.dataLength)
-	if higherBytes := t.sparseIndex.Higher(key); higherBytes != nil {
-		upperBound, err = record.ParseInt32(bytes.NewReader(higherBytes))
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	dataBuf, err := t.readSSTableData(lowerBound, upperBound)
+	dataBuf, err := t.readBlock(blockHandleFromBytes(floorBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -249,3 +252,4 @@ func (t *SSTable) Find(key interfaces.Comparable) ([]byte, error) {
 	}
 	return nil, nil
 }
+

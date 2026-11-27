@@ -12,8 +12,8 @@ type BloomFilter struct {
 }
 
 type BloomFilterImplementation interface {
-	Insert(key interfaces.Comparable) error
-	Contains(key interfaces.Comparable) (bool, error)
+	Insert(key interfaces.Comparable)
+	Contains(key interfaces.Comparable) bool
 }
 
 func NewBloomFilter(expectedItems uint32, falsePositiveRate float64) *BloomFilter {
@@ -37,38 +37,26 @@ func NewBloomFilter(expectedItems uint32, falsePositiveRate float64) *BloomFilte
 	}
 }
 
-func (b *BloomFilter) Insert(key interfaces.Comparable) error {
-	hashs, err := key.Hash(b.numHashes)
-	if err != nil {
-		return err
-	}
-
-	for _, hash := range hashs {
+func (b *BloomFilter) Insert(key interfaces.Comparable) {
+	for _, hash := range key.Hash(b.numHashes) {
 		position := hash % b.size
 		bucketIdx := position / 64
 		bitPos := position % 64
 
 		b.buckets[bucketIdx] |= 1 << bitPos
 	}
-
-	return nil
 }
 
-func (b *BloomFilter) Contains(key interfaces.Comparable) (bool, error) {
-	hashs, err := key.Hash(b.numHashes)
-	if err != nil {
-		return false, err
-	}
-
-	for _, hash := range hashs {
+func (b *BloomFilter) Contains(key interfaces.Comparable) bool {
+	for _, hash := range key.Hash(b.numHashes) {
 		position := hash % b.size
 		bucketIdx := position / 64
 		bitPos := position % 64
 
 		if (b.buckets[bucketIdx] & (1 << bitPos)) == 0 {
-			return false, nil
+			return false
 		}
 	}
 
-	return true, nil
+	return true
 }

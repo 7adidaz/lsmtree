@@ -58,11 +58,7 @@ func ParseInt32(buf io.Reader) (uint32, error) {
 //	[4 bytes] - payload length (int32)
 //	[N bytes] - payload (a serialized Record; see Record.ToBytes)
 func WriteEntry(w io.Writer, key interfaces.Comparable, payload []byte) error {
-	keyBytes, err := key.ToBytes()
-	if err != nil {
-		return fmt.Errorf("error serializing key: %w", err)
-	}
-	if _, err := w.Write(keyBytes); err != nil {
+	if _, err := w.Write(key.ToBytes()); err != nil {
 		return fmt.Errorf("error writing key: %w", err)
 	}
 
